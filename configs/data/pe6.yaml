@@ -1,0 +1,23 @@
+_target_: src.data.pe6_datamodule.PE6DataModule
+data_dir: ${paths.data_dir}/pe6/merged-main-on-master_normalized.parquet
+batch_size: 512 # Needs to be divisible by the number of devices (e.g., if in a distributed setup)
+datafilter:
+    # PE_types: ["PE6f(+dRNaseH)"]
+
+datasplit:
+    stratification_column: "WildTypeSequence" # Pre-defined column to stratify the data
+    group_column: "ID" # Pre-defined column to group the data
+    test_size: 0.2
+    val_size: 0.25
+
+dataloader:
+    num_workers: 20
+    pin_memory: True
+    persistent_workers: True
+
+skip_preprocessing: False # Skip preprocessing if the data is already preprocessed and saved in the data_dir
+
+dataset:
+    train_read_count_filter: 500
+    val_read_count_filter: 500
+    test_read_count_filter: 500

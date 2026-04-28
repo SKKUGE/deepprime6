@@ -1,0 +1,62 @@
+_target_: src.models.pe6_module_dp_only.PE6OriginalDeepPrimeModule
+
+optimizer:
+    _target_: torch.optim.AdamW
+    _partial_: true
+    lr: 5e-3
+    weight_decay: 5e-2
+
+scheduler:
+    # (Yu et al., 2023)
+    _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
+    _partial_: true
+    T_0: 10
+    T_mult: 1
+    eta_min: ${divide:${model.optimizer.lr},100}
+
+feature_extractor:
+    # (Yu et al., 2023)
+    _target_: src.models.components.dprime.GeneInteractionModelVanilla
+    _partial_: True
+    c1_in_channels: 4
+    c1_out_channels: 128
+    c1_kernel_size: [2, 3]
+    c1_stride: 1
+    c1_padding: [0, 1]
+    c1_batchnorm_features: 128
+    hidden_size: 128
+    num_layers: 1
+    num_features: 24
+    dropout: 0.1
+    c2_out_channels: 108
+    c2_kernel_size: 3
+    c2_stride: 1
+    c2_padding: 1
+    r_in_features: 128
+    s_out_features: 12
+    d_hidden1: 96
+    d_hidden2: 64
+    d_out_features: 128
+    head_in_features: 140
+    head_out_features: 1
+
+dataprops:
+    PE_class_list: ${data.datafilter.PE_types}
+
+model_weights:
+    baseline: null
+    requires_grad: False
+    num_ensemble: 20
+
+criterion:
+    _target_: src.models.components.loss.weighted_mse_loss.BalancedMSELoss
+    _partial_: True
+    scale_threshold: 3.0
+    minimum_scaling_factor: 5.0
+    alpha: 6.0
+    substitution_weight: 1.0
+    insertion_weight: 0.7
+    deletion_weight: 0.6
+
+# compile model for faster training with pytorch 2.0
+compile: false

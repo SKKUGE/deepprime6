@@ -1,0 +1,20 @@
+# @package _global_
+
+defaults:
+    - _self_
+    - data: pe6 # choose datamodule with `test_dataloader()` for evaluation
+    - model: pe6_deep_prime_only
+    - logger: null
+    - trainer: default
+    - paths: default
+    - extras: default
+    - hydra: default
+    - experiment: null
+    - callbacks: default
+
+task_name: "eval"
+
+tags: ["dev"]
+
+# passing checkpoint path is necessary for evaluation
+ckpt_path: ???
