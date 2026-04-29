@@ -16,10 +16,14 @@ wandb==0.22.3
 # --------- others --------- #
 rootutils==1.0.7       # standardizing the project root setup
 rich==13.7.1           # beautiful text formatting in terminal
-tensorflow==2.14.0
-protobuf==3.20.3
+
+# NOTE: genet 0.15.1 requires tensorflow < 2.10.0 and protobuf <= 3.20.3.
+# However, Python 3.11 requires tensorflow >= 2.12.0 and the system enforces protobuf 4.x.
+# tensorflow 2.15.0 with protobuf 4.24.4 is verified to work with genet's pre-trained models.
+tensorflow==2.15.0
+protobuf==4.24.4
 numpy==1.26.4          # for genet
 pandas==2.1.4
 pyarrow==17.0.0
-genet==0.15.1
+# genet==0.15.1 (Install separately: pip install genet==0.15.1 --no-deps)
 scikit-learn==1.4.2

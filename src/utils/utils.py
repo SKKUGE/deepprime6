@@ -91,13 +91,14 @@ def task_wrapper(task_func: Callable) -> Callable:
 
             # always close wandb run (even if exception occurs so multirun won't fail)
             if find_spec("wandb"):  # check if wandb is installed
-                import wandb
+                try:
+                    import wandb
 
-                if wandb.run:
-                    log.info("Closing wandb!")
-                    wandb.finish(
-                        # exit_code=0
-                    )  # Asynchronously flush all data to wandb and finish the run to speed up the pipeline
+                    if wandb.run:
+                        log.info("Closing wandb!")
+                        wandb.finish()  # Asynchronously flush all data to wandb and finish the run to speed up the pipeline
+                except (ImportError, AttributeError):
+                    pass
 
             # Explicitly release large objects before garbage collection so that
             # GPU memory and dataloader workers are actually freed between sweep trials.

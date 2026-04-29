@@ -3,8 +3,8 @@
 # Usage: bash scripts/predict.sh <experiment_name> <ckpt_path> [hydra_overrides...]
 #
 # Examples:
-#   bash scripts/predict.sh GEI-13/pe6a-DP-baseline logs/GEI-13/pe6a-DP-baseline/5/checkpoints/epoch_004.ckpt
-#   bash scripts/predict.sh GEI-13/pe6a-DP-baseline logs/GEI-13/pe6a-DP-baseline/5/checkpoints/epoch_004.ckpt trainer=cpu
+#   bash scripts/predict.sh pe6a-DP-baseline logs/pe6a-DP-baseline/runs/2026-04-28_15-00-00/checkpoints/epoch_004.ckpt
+#   bash scripts/predict.sh pe6a-DP-baseline logs/pe6a-DP-baseline/runs/2026-04-28_15-00-00/checkpoints/epoch_004.ckpt trainer=cpu
 
 set -euo pipefail
 

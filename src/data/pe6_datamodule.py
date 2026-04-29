@@ -153,7 +153,14 @@ class PE6DataModule(LightningDataModule):
 
         # load and split datasets only if not loaded already
         if not self.data_train and not self.data_val and not self.data_test:
-            data: pd.DataFrame = pd.read_parquet(self.processed_data_path)
+            # When skip_preprocessing is True, read directly from data_dir
+            # (the user provides already-preprocessed data).
+            data_path = (
+                self.data_dir
+                if self.hparams.skip_preprocessing
+                else self.processed_data_path
+            )
+            data: pd.DataFrame = pd.read_parquet(data_path)
 
             # Stratified data split - first split the data into training and test sets
             gss = GroupShuffleSplit(
@@ -236,13 +243,15 @@ class PE6DataModule(LightningDataModule):
                 norm_std=norm_std,
             )
 
-            self.trainer.logger.log_hyperparams(
-                {
-                    "train/size": len(self.data_train),
-                    "val/size": len(self.data_val),
-                    "test/size": len(self.data_test),
-                }
-            )
+            if self.trainer.logger:
+                self.trainer.logger.log_hyperparams(
+                    {
+                        "train/size": len(self.data_train),
+                        "val/size": len(self.data_val),
+                        "test/size": len(self.data_test),
+                    }
+                )
+
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.

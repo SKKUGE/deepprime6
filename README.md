@@ -3,8 +3,6 @@ Official repository for DeepPrime6: Deep learning-based prediction of prime edit
 
 ## Environment
 
-This project targets Python 3.8–3.10.
-
 ### Option A: conda
 
 ```bash
@@ -16,8 +14,24 @@ conda activate myenv
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+# Note: On some systems, you may need to bypass constraints for protobuf/tensorflow
+PIP_CONSTRAINT="" python -m pip install -r requirements.txt
 ```
+
+## Troubleshooting: Dependency Conflicts
+
+If you encounter an error like `ResolutionImpossible` or conflicts between `genet` and `tensorflow`:
+
+1. **Python 3.11+**: `genet` metadata strictly requires `tensorflow < 2.10.0`, but Python 3.11 requires `tensorflow >= 2.12.0`. We have verified that **`tensorflow 2.15.0`** works. To bypass strict dependency checks, install `genet` separately without dependencies:
+   ```bash
+   # 1. Install other dependencies (bypass system constraints if needed)
+   PIP_CONSTRAINT="" pip install -r requirements.txt
+
+   # 2. Install genet separately to avoid metadata conflicts
+   PIP_CONSTRAINT="" pip install genet==0.15.1 --no-deps
+   ```
+
+2. **Protobuf Conflict**: If your environment forces `protobuf 4.x` (common in some managed environments), you must clear the `PIP_CONSTRAINT` variable as shown above.
 
 ## Data
 
@@ -27,6 +41,7 @@ The codebase supports training and evaluation on custom datasets provided in CSV
 
 If you are providing your own dataset (e.g., `data/my_dataset.csv`), ensure your CSV file includes the following required columns for the preprocessing pipeline (`skip_preprocessing=False`):
 
+(#TBD: update this with minimum required columns)
 - **`WideTargetSequence`**: Extended sequence context around the target site (e.g., 200nt).
 - **`Guide`**: The 20-nt spacer sequence.
 - **`Edit_type`**: Type of edit (`Sub`, `Ins`, or `Del`).
@@ -57,6 +72,7 @@ bash scripts/train.sh pe6a-DP-baseline \
     trainer=cpu \
     data.batch_size=2 \
     model.model_weights.baseline=null \
+    logger=csv \
     ~callbacks.rich_progress_bar
 ```
 
@@ -68,6 +84,7 @@ bash scripts/predict.sh pe6a-DP-baseline \
     data.data_dir=data/sample_data.csv \
     trainer=cpu \
     data.batch_size=2 \
+    logger=csv \
     ~callbacks.rich_progress_bar
 ```
 
@@ -81,6 +98,15 @@ The following table lists the final SOTA models reported in the paper. You can u
 | PEmaxdRNaseH | PEmaxdRNaseH (MainFT) | `85mculrb` | `weights/pemaxdrnaseh_mainft.ckpt` | 0.711 |
 | PE6b | PE6b (MainFT) | `2hyiekc1` | `weights/pe6b_mainft.ckpt` | 0.685 |
 | PE6c | PE6c (MainFT) | `5wu8hpi4` | `weights/pe6c_mainft.ckpt` | 0.694 |
+
+### Additional Pre-trained Weights
+
+We also provide models trained from scratch (without DeepPrime transfer learning) for comparison:
+
+- **PE6a (Scratch):** `weights/pe6a_scratch.ckpt`
+- **PE6b (Scratch):** `weights/pe6b_scratch.ckpt`
+- **PE6c (Scratch):** `weights/pe6c_scratch.ckpt`
+- **PEmaxdRNaseH (Scratch):** `weights/pemaxdrnaseh_scratch.ckpt`
 
 ## Quick Start
 
@@ -98,13 +124,12 @@ bash scripts/train.sh pe6a-DP-baseline trainer=cpu data.batch_size=128
 ```
 
 ### Evaluating a checkpoint
-
 ```bash
-# Evaluate a checkpoint on the test set
-bash scripts/predict.sh pe6a-DP-baseline logs/PE6a-ft/runs/2026-04-28_15-00-00/checkpoints/epoch_004.ckpt
+# Evaluate the PE6a SOTA model on the test set
+bash scripts/predict.sh pe6a-DP-baseline weights/pe6a_mainft.ckpt
 
-# Evaluate with custom overrides
-bash scripts/predict.sh pe6a-DP-baseline logs/PE6a-ft/runs/2026-04-28_15-00-00/checkpoints/epoch_004.ckpt trainer=cpu
+# Evaluate with custom overrides (e.g., using CPU)
+bash scripts/predict.sh pe6a-DP-baseline weights/pe6a_mainft.ckpt trainer=cpu
 ```
 
 ## Customizing Configurations

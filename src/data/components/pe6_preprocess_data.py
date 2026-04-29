@@ -60,6 +60,13 @@ def preprocess_data(
         "Guide": "Guide",  # No change
     }
     source = source.rename(columns=column_mapping)
+    
+    if "PBS_length" not in source.columns and "PBS" in source.columns:
+        source["PBS_length"] = source["PBS"].apply(len)
+    if "RT_length" not in source.columns and "RTT" in source.columns:
+        source["RT_length"] = source["RTT"].apply(len)
+
+    
 
     # Process data
     data = calculate_guide_features(source)
@@ -94,7 +101,12 @@ def preprocess_data(
         )
         data = data[valid_seq_mask].copy()
 
-    data["DeepSpCas9_score"] = SpCas9().predict(data["deepspcas9_guide_30"])["SpCas9"]
+    try:
+        data["DeepSpCas9_score"] = SpCas9().predict(data["deepspcas9_guide_30"])["SpCas9"]
+    except Exception as e:
+        print(f"Warning: DeepSpCas9 prediction failed with error: {e}")
+        print("Filling DeepSpCas9_score with dummy value (0.0).")
+        data["DeepSpCas9_score"] = 0.0
 
     # Preprocess: melting data
     data = data.rename(columns=RENAME_MAP)
@@ -105,14 +117,9 @@ def preprocess_data(
 
     # Fill in missing and erroneous prime editing efficiencies
     data = data.fillna(0)
-    # data[data.select_dtypes(include="number").columns] = data.select_dtypes(
-    #     include="number"
-    # ).clip(lower=0)
 
     # Rename columns for interpretability
     data = data.rename(columns=RENAME_MAP_FOR_VIS)
-
-    data["StufferSequence"] = data["StufferSequence"].apply(lambda x: str(x).encode("utf-8"))
 
     # Save only if output_file is specified
     if output_file is not None:

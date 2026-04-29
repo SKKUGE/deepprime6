@@ -1,13 +1,16 @@
-# [BUG]@2024-09-24-10-22-09: The model is instantiated with the wrong parameters as different from the original implementation in the paper. Refer to the notebook 7.0
-
 import glob
 import logging
 from typing import Any, Dict, Tuple
 
 import pandas as pd
 import torch
-import wandb
-import wandb.plot
+
+try:
+    import wandb
+    import wandb.plot
+    _WANDB_AVAILABLE = True
+except (ImportError, AttributeError):
+    _WANDB_AVAILABLE = False
 from lightning import LightningModule
 from torch import Tensor, nn
 from torchmetrics import MaxMetric, MeanMetric
@@ -445,17 +448,20 @@ class PE6OriginalDeepPrimeModule(LightningModule):
         result_table = result_table.reset_index(drop=False)
 
         # Save to CSV for reproduction for debugging
-        # result_table.to_csv("test_predictions.csv", index=False)
+        if self.hparams.get("prediction_save_path"):
+            result_table.to_csv(self.hparams.prediction_save_path, index=False)
 
-        if self.trainer.logger is not None and hasattr(self.trainer.logger, "experiment"):
-            try:
-                self.trainer.logger.experiment.log(
-                    {
-                        "test/result_table": wandb.Table(dataframe=result_table),
-                    }
-                )
-            except Exception as e:
-                log.warning(f"Failed to log test result table: {e}")
+
+        if _WANDB_AVAILABLE and self.trainer.logger is not None:
+            if self.trainer.logger.__class__.__name__ == "WandbLogger":
+                try:
+                    self.trainer.logger.experiment.log(
+                        {
+                            "test/result_table": wandb.Table(dataframe=result_table),
+                        }
+                    )
+                except Exception as e:
+                    log.warning(f"Failed to log test result table to WandB: {e}")
 
         # Reset metrics
         self.test_loss.reset()
