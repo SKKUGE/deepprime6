@@ -15,20 +15,11 @@ wandb==0.22.3
 
 # --------- others --------- #
 rootutils==1.0.7       # standardizing the project root setup
-pre-commit==3.7.1      # hooks for applying linters on commit
 rich==13.7.1           # beautiful text formatting in terminal
-pytest==8.2.2          # tests
 tensorflow==2.14.0
-tensorboard==2.14.1
-protobuf==3.19.6
+protobuf==3.20.3
 numpy==1.26.4          # for genet
 pandas==2.1.4
 pyarrow==17.0.0
 genet==0.15.1
 scikit-learn==1.4.2
-pycaret==3.3.2
-
-# --------- visualization --------- #
-matplotlib==3.7.5
-seaborn==0.13.2
-statsmodels==0.14.5

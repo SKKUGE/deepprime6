@@ -24,8 +24,9 @@ class PE6DeepPrimeDataset(Dataset):
         ), "The current implementation only supports one PE type"
         t = datafilter["PE_types"][0]
         filtering_results = []
-        for r in AVG_PAIR[t]:
-            filtering_results.append(data[r] > read_count_filter)
+        for r in AVG_PAIR.get(t, []):
+            if r in data.columns:
+                filtering_results.append(data[r] > read_count_filter)
 
         # It returns False if all replicates are 0.
         # from functools import reduce
