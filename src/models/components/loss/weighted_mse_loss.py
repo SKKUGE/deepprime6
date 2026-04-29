@@ -110,18 +110,26 @@ class BalancedMSELoss(nn.Module):
         pred = torch.log1p(pred)
 
         # Weighting loss by their edit types
+        mask_sub = actual[:, SUB_IDX] == 1
         l1 = (
-            self.mse(pred[actual[:, SUB_IDX] == 1], y[actual[:, SUB_IDX] == 1])
-            * self.substitution_weight
-        )  # Sub
+            self.mse(pred[mask_sub], y[mask_sub]) * self.substitution_weight
+            if mask_sub.any()
+            else torch.tensor(0.0, device=pred.device)
+        )
+
+        mask_ins = actual[:, INS_IDX] == 1
         l2 = (
-            self.mse(pred[actual[:, INS_IDX] == 1], y[actual[:, INS_IDX] == 1])
-            * self.insertion_weight
-        )  # Ins
+            self.mse(pred[mask_ins], y[mask_ins]) * self.insertion_weight
+            if mask_ins.any()
+            else torch.tensor(0.0, device=pred.device)
+        )
+
+        mask_del = actual[:, DEL_IDX] == 1
         l3 = (
-            self.mse(pred[actual[:, DEL_IDX] == 1], y[actual[:, DEL_IDX] == 1])
-            * self.deletion_weight
-        )  # Del
+            self.mse(pred[mask_del], y[mask_del]) * self.deletion_weight
+            if mask_del.any()
+            else torch.tensor(0.0, device=pred.device)
+        )
 
         return l1 + l2 + l3
 
@@ -150,6 +158,9 @@ class ScaledMSELoss(nn.Module):
         )
 
         # Compute the loss on valid values
+        if len(y_valid) == 0:
+            return torch.tensor(0.0, device=pred.device)
+
         squared_diff = (y_valid - pred_valid) ** 2
         weighted_squared_diff = mu * squared_diff
         loss = torch.mean(weighted_squared_diff)

@@ -81,7 +81,11 @@ class PE6OriginalDeepPrimeModule(LightningModule):
             and self.hparams.model_weights.baseline is not None
         ):
             print(f"Loading models from {self.hparams.model_weights.baseline}")
-            for m_file in sorted(glob.glob(self.hparams.model_weights.baseline)):
+            m_files = sorted(glob.glob(self.hparams.model_weights.baseline))
+            if len(m_files) == 0:
+                raise FileNotFoundError(f"No baseline model weights found matching pattern: {self.hparams.model_weights.baseline}. Please check the path or set model.model_weights.baseline=null to train from scratch.")
+            
+            for m_file in m_files:
                 model = feature_extractor()
                 genet_sd = torch.load(m_file, weights_only=True)
                 remapped_sd = self._remap_genet_keys(genet_sd, model)

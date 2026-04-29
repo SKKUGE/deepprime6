@@ -126,7 +126,7 @@ def preprocess_data(
 
 
 def load_data(data_dir: str = "data/") -> pd.DataFrame:
-    """Load the PE6 dataset from a parquet file.
+    """Load the PE6 dataset from a parquet file or csv file.
 
     Args:
         data_dir (str): The directory containing the PE6 dataset file.
@@ -134,6 +134,8 @@ def load_data(data_dir: str = "data/") -> pd.DataFrame:
     Returns:
         pd.DataFrame: The PE6 dataset.
     """
+    if data_dir.endswith(".csv"):
+        return pd.read_csv(data_dir)
     return pd.read_parquet(data_dir)
 
 

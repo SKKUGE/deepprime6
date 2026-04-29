@@ -7,7 +7,7 @@ from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 
-import src.utils.optuna_patch  # noqa: F401  # Optuna 2.10.1 + SQLAlchemy 2.0 fix
+
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #

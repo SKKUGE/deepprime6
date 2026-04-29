@@ -2,7 +2,7 @@ _target_: src.data.pe6_datamodule.PE6DataModule
 data_dir: ${paths.data_dir}/pe6/merged-main-on-master_normalized.parquet
 batch_size: 512 # Needs to be divisible by the number of devices (e.g., if in a distributed setup)
 datafilter:
-    # PE_types: ["PE6f(+dRNaseH)"]
+    PE_types: ["PE6a(+PEmaxCas9)"]
 
 datasplit:
     stratification_column: "WildTypeSequence" # Pre-defined column to stratify the data

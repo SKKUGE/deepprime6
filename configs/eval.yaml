@@ -3,14 +3,14 @@
 defaults:
     - _self_
     - data: pe6 # choose datamodule with `test_dataloader()` for evaluation
-    - model: pe6_deep_prime_only
+    - model: pe6_deep_prime_only_vanilla
     - logger: null
     - trainer: default
     - paths: default
     - extras: default
     - hydra: default
-    - experiment: null
     - callbacks: default
+    - experiment: null
 
 task_name: "eval"
 

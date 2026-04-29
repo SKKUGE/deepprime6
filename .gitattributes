@@ -5,12 +5,10 @@
 # This keeps the development repository intact while producing a clean archive
 # for the publication repository.
 # =============================================================================
-
 # ----- PRIDICT2 submodule (broken, no longer needed) -------------------------
 PRIDICT2                                        export-ignore
 scripts/14.0-PRIDICT2-comparison.py             export-ignore
 scripts/plot_comparison.py                      export-ignore
-
 # ----- WandB / internal infrastructure scripts ------------------------------
 scripts/download_checkpoint.py                  export-ignore
 scripts/download_comparison_tables.py           export-ignore
@@ -22,7 +20,6 @@ scripts/normalize_data.py                       export-ignore
 scripts/save_rq3_splits.py                      export-ignore
 scripts/compare_models.py                       export-ignore
 scripts/schedule.sh                             export-ignore
-
 # ----- Development / exploratory notebooks -----------------------------------
 notebooks/1.0-ju-genet-example.ipynb            export-ignore
 notebooks/2.0-ju-rank-class-imbalance-visualization.ipynb  export-ignore
@@ -41,7 +38,6 @@ notebooks/10.0.1-stratification-investigation.ipynb  export-ignore
 notebooks/10.1-pe6-vs-pe7-fold-change-prediction.ipynb  export-ignore
 notebooks/__init__.py                           export-ignore
 notebooks/.gitkeep                              export-ignore
-
 # ----- Development experiment configs (SKW / legacy / duplicates) ------------
 configs/experiment/pe6-small-skw-6-2-DP-dev.yaml      export-ignore
 configs/experiment/pe6-small-skw-6-2-DP.yaml           export-ignore
@@ -72,7 +68,6 @@ configs/experiment/pemax-DP-baseline-original.yaml     export-ignore
 configs/experiment/pemaxdrnaseh-DP-baseline.yaml       export-ignore
 configs/experiment/pemaxdrnaseh-DP-baseline-from-scratch.yaml  export-ignore
 configs/experiment/example.yaml                        export-ignore
-
 # ----- Development data configs (SKW / PE6d / PE6g) -------------------------
 configs/data/pe6-small-skw-6-2.yaml                    export-ignore
 configs/data/pe6-small-skw-6-3.yaml                    export-ignore
@@ -82,22 +77,17 @@ configs/data/pe6-small-skw-7-3.yaml                    export-ignore
 configs/data/pe6-small-skw-7-4.yaml                    export-ignore
 configs/data/pe6d.yaml                                 export-ignore
 configs/data/pe6g.yaml                                 export-ignore
-
 # ----- HPO sweep configs ----------------------------------------------------
 configs/hparams_search/                                export-ignore
-
 # ----- PE6d / PE6g train configs ---------------------------------------------
 configs/train_6d.yaml                                  export-ignore
 configs/train_6g.yaml                                  export-ignore
-
 # ----- Debug configs ---------------------------------------------------------
 configs/debug/                                         export-ignore
-
 # ----- Unused model configs --------------------------------------------------
 configs/model/pe6_delta.yaml                           export-ignore
 configs/model/pe6_resnet.yaml                          export-ignore
 configs/model/pe6_simple.yaml                          export-ignore
-
 # ----- CI/CD, GitHub infra, dev tools ----------------------------------------
 .github/                                               export-ignore
 .pre-commit-config.yaml                                export-ignore
@@ -105,7 +95,6 @@ configs/model/pe6_simple.yaml                          export-ignore
 .vscode/                                               export-ignore
 Makefile                                               export-ignore
 pyproject.toml                                         export-ignore
-
 # ----- DVC (internal Synology NAS) -------------------------------------------
 .dvc/                                                  export-ignore
 .dvcignore                                             export-ignore
@@ -113,10 +102,8 @@ data/DeepPrime.dvc                                     export-ignore
 data/MNIST.dvc                                         export-ignore
 data/pe6.dvc                                           export-ignore
 src/models/weights.dvc                                 export-ignore
-
 # ----- Credentials / secrets -------------------------------------------------
 .env                                                   export-ignore
-
 # ----- Miscellaneous dev artifacts -------------------------------------------
 data/.gitignore                                        export-ignore
 data/.gitkeep                                          export-ignore
@@ -125,14 +112,11 @@ src/models/.gitignore                                  export-ignore
 src/models/components/utils/.gitkeep                   export-ignore
 logs/.gitkeep                                          export-ignore
 configs/local/.gitkeep                                 export-ignore
-
 # ----- Tests (internal, not needed for reproduction) -------------------------
 tests/                                                 export-ignore
-
 # ----- Development figures (not directly in paper) ---------------------------
 figures/2.0-ju-rank-class-imbalance-visualization/     export-ignore
 figures/14.0-pridict2-comparison/                      export-ignore
-
 # ----- Unused model / data source code ---------------------------------------
 src/models/pe6_delta_module.py                         export-ignore
 src/data/pe6_delta_datamodule.py                       export-ignore
@@ -140,3 +124,5 @@ src/data/components/data_model/pe6_delta_dataset.py    export-ignore
 src/models/components/pe6_resnet.py                    export-ignore
 src/models/components/pe6_dense_net.py                 export-ignore
 src/utils/optuna_patch.py                              export-ignore
+weights.tar.gz filter=lfs diff=lfs merge=lfs -text
+weights/*.tar.gz filter=lfs diff=lfs merge=lfs -text
