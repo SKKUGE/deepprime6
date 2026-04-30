@@ -60,6 +60,13 @@ def preprocess_data(
         "Guide": "Guide",  # No change
     }
     source = source.rename(columns=column_mapping)
+    
+    if "PBS_length" not in source.columns and "PBS" in source.columns:
+        source["PBS_length"] = source["PBS"].apply(len)
+    if "RT_length" not in source.columns and "RTT" in source.columns:
+        source["RT_length"] = source["RTT"].apply(len)
+
+    
 
     # Process data
     data = calculate_guide_features(source)
@@ -72,7 +79,7 @@ def preprocess_data(
                 lambda x: determine_seqs(
                     alt_type=x["Edit_type"],
                     alt_len=x["Edit length"],
-                    wt_seq=x["WideTargetSequence"],
+                    wt_seq=x[x["ContextSeqUsed"]], # Use the same context as Nicking
                     pbs_seq=x["PBS"],
                     rt_seq=x["RTT"],
                     nick_index=x["Nicking"],
@@ -94,7 +101,12 @@ def preprocess_data(
         )
         data = data[valid_seq_mask].copy()
 
-    data["DeepSpCas9_score"] = SpCas9().predict(data["deepspcas9_guide_30"])["SpCas9"]
+    try:
+        data["DeepSpCas9_score"] = SpCas9().predict(data["deepspcas9_guide_30"])["SpCas9"]
+    except Exception as e:
+        print(f"Warning: DeepSpCas9 prediction failed with error: {e}")
+        print("Filling DeepSpCas9_score with dummy value (0.0).")
+        data["DeepSpCas9_score"] = 0.0
 
     # Preprocess: melting data
     data = data.rename(columns=RENAME_MAP)
@@ -105,14 +117,9 @@ def preprocess_data(
 
     # Fill in missing and erroneous prime editing efficiencies
     data = data.fillna(0)
-    # data[data.select_dtypes(include="number").columns] = data.select_dtypes(
-    #     include="number"
-    # ).clip(lower=0)
 
     # Rename columns for interpretability
     data = data.rename(columns=RENAME_MAP_FOR_VIS)
-
-    data["StufferSequence"] = data["StufferSequence"].apply(lambda x: str(x).encode("utf-8"))
 
     # Save only if output_file is specified
     if output_file is not None:
@@ -126,7 +133,7 @@ def preprocess_data(
 
 
 def load_data(data_dir: str = "data/") -> pd.DataFrame:
-    """Load the PE6 dataset from a parquet file.
+    """Load the PE6 dataset from a parquet file or csv file.
 
     Args:
         data_dir (str): The directory containing the PE6 dataset file.
@@ -134,6 +141,8 @@ def load_data(data_dir: str = "data/") -> pd.DataFrame:
     Returns:
         pd.DataFrame: The PE6 dataset.
     """
+    if data_dir.endswith(".csv"):
+        return pd.read_csv(data_dir)
     return pd.read_parquet(data_dir)
 
 
@@ -152,27 +161,53 @@ def find_all_indices(main_string: str, query_string: str) -> tuple[int, int]:
     query_result = [
         (m.start(), m.end() - 1) for m in re.finditer(re.escape(query_string), main_string)
     ]
-    assert len(query_result) < 2, f"Multiple occurrences of {query_string} found in {main_string}"
-    return query_result[0]
+    return query_result
 
 
 def calculate_guide_features(df: pd.DataFrame) -> pd.DataFrame:
     """Calculates guide features based on the given DataFrame.
+    It prefers 'OligoSequence_fixed_length' for context if available, 
+    otherwise falls back to 'WideTargetSequence'.
 
     Args:
-        df (pd.DataFrame): The input DataFrame containing the columns "WideTargetSequence" and "Guide".
+        df (pd.DataFrame): The input DataFrame.
 
     Returns:
         pd.DataFrame: The modified DataFrame with additional columns "GuideStart", "GuideEnd", and "Nicking".
     """
-    query: pd.Series = df[["WideTargetSequence", "Guide"]].apply(
-        lambda x: find_all_indices(x["WideTargetSequence"], x["Guide"]),
-        axis=1,  # Find necessary indices by guide sequence
+    context_col = "OligoSequence_fixed_length" if "OligoSequence_fixed_length" in df.columns else "WideTargetSequence"
+    
+    def select_best_index(main_seq, guide_seq, indices):
+        if len(indices) == 0:
+            return (None, None)
+        if len(indices) == 1:
+            return indices[0]
+        
+        # Try to find occurrence followed by NGG PAM
+        pam_scores = []
+        for start, end in indices:
+            pam_start = end + 1
+            pam = main_seq[pam_start:pam_start+3]
+            if len(pam) == 3 and pam[1:3] == "GG":
+                pam_scores.append((start, end, True))
+            else:
+                pam_scores.append((start, end, False))
+        
+        pam_matches = [idx for idx in pam_scores if idx[2]]
+        if len(pam_matches) == 1:
+            return pam_matches[0][0], pam_matches[0][1]
+        
+        # If still ambiguous or no PAM, return the first one
+        return indices[0]
+
+    query: pd.Series = df[[context_col, "Guide"]].apply(
+        lambda x: select_best_index(x[context_col], x["Guide"], find_all_indices(x[context_col], x["Guide"])),
+        axis=1,
     )
     start_idx = query.str[0]
     end_idx = query.str[1]
 
-    df = df.assign(GuideStart=start_idx, GuideEnd=end_idx)
+    df = df.assign(GuideStart=start_idx, GuideEnd=end_idx, ContextSeqUsed=context_col)
     df["Nicking"] = df["GuideEnd"] - 3
     return df
 
@@ -412,8 +447,8 @@ def make_output_df(df: pd.DataFrame) -> pd.DataFrame:
             return len(sRTTSeq) - nEditPos - nAltLen + 1
 
     def calculate_74nt_target_sequence(
-        sOligoSeq: str,
-        sGuideSeq: str,
+        sWTSeq: str,
+        nNickIndex: int,
         sPBS_RTSeq: str,
         PBSlen: int,
         RTlen: int,
@@ -423,8 +458,8 @@ def make_output_df(df: pd.DataFrame) -> pd.DataFrame:
         """Calculates the 74nt target sequence based on the given inputs.
 
         Args:
-            sOligoSeq (str): The oligo sequence.
-            sGuideSeq (str): The guide sequence.
+            sWTSeq (str): The wild-type sequence (e.g. WideTargetSequence).
+            nNickIndex (int): The nick index in the sWTSeq.
             sPBS_RTSeq (str): The PBS-RT sequence.
             PBSlen (int): The length of the PBS sequence.
             RTlen (int): The length of the RT sequence.
@@ -433,36 +468,38 @@ def make_output_df(df: pd.DataFrame) -> pd.DataFrame:
         Returns:
             TargetSequenceData: An object containing the calculated target sequence data, including the wild type sequence,
             prime edited sequence, and edit position.
-
-        Raises:
-            ValueError: If the guide sequence is not found in the oligo sequence.
         """
-        import re
+        # Define the target window
+        start_idx = nNickIndex - UPSTREAM_LENGTH_TO_NICK
+        end_idx = nNickIndex + DOWNSTREAM_IDX_TO_NICK
+        
+        # Robust extraction with padding if context is insufficient
+        # This allows using shorter WideTargetSequence if necessary
+        sWTSeq_padded = sWTSeq
+        offset = 0
+        
+        if start_idx < 0:
+            pad_len = abs(start_idx)
+            sWTSeq_padded = ("N" * pad_len) + sWTSeq_padded
+            offset = pad_len
+            start_idx = 0
+            end_idx += offset
+        
+        if end_idx > len(sWTSeq_padded):
+            pad_len = end_idx - len(sWTSeq_padded)
+            sWTSeq_padded = sWTSeq_padded + ("N" * pad_len)
 
-        match = re.search(
-            f"{sGuideSeq}[A|T|C|G]GG", sOligoSeq
-        )  # Assumption: Usecase is limited to SpCas9
-
-        if match is not None:
-            nNickIndex: int = match.end() - 6  # Check if this is correct
-        else:
-            raise ValueError(f"Guide sequence {sGuideSeq} not found in oligo sequence {sOligoSeq}")
-
-        sWTSeq74: str = sOligoSeq[
-            nNickIndex - UPSTREAM_LENGTH_TO_NICK : nNickIndex + DOWNSTREAM_IDX_TO_NICK
-        ]
+        sWTSeq74: str = sWTSeq_padded[start_idx:end_idx]
         assert len(sWTSeq74) == 74, f"Length of sWTSeq74 is not 74: {len(sWTSeq74)}"
 
-        sSeq30: str = sOligoSeq[nNickIndex - UPSTREAM_LENGTH_TO_NICK : nNickIndex + 9]
+        # Similarly for Seq30 (DeepSpCas9 input)
+        seq30_start = (nNickIndex + offset) - UPSTREAM_LENGTH_TO_NICK
+        seq30_end = (nNickIndex + offset) + 9
+        sSeq30: str = sWTSeq_padded[seq30_start:seq30_end]
+        
         assert (
             len(sSeq30) == 30
-        ), f"Length of sSeq30 (30-nt window for SpCas9 is not 30: {len(sSeq30)}"
-        # NOTE: Original definition of nEditPos
-        # nEditPos := pegRNA design parameter
-        # nNickIndex == nPAM_Nick == nIndexStart - 3
-        # nIndexStart == sReIndex.start()
-        # sReIndex == regex.finditer(sRE, self.sWTSeq, overlapped=True)
-        # sRE == "NGG"
+        ), f"Length of sSeq30 (30-nt window for SpCas9) is not 30: {len(sSeq30)}"
 
         s5Bufferlen = UPSTREAM_LENGTH_TO_NICK - PBSlen
         s3Bufferlen = DOWNSTREAM_IDX_TO_NICK - RTlen
@@ -530,10 +567,13 @@ def make_output_df(df: pd.DataFrame) -> pd.DataFrame:
     df["RHA_len"] = df[["RTT", "Edit position", "Edit length", "Edit_type"]].apply(
         lambda x: calculate_RHA_len(*x), axis=1
     )
+    # Use the same context sequence as used for guide finding
+    context_col = df["ContextSeqUsed"].iloc[0] if "ContextSeqUsed" in df.columns else "WideTargetSequence"
+    
     df["TargetSequenceData"] = df[
         [
-            "OligoSequence_fixed_length",
-            "Guide",
+            context_col,
+            "Nicking",
             "TS_PBS_RT",
             "PBS_length",
             "RT_length",

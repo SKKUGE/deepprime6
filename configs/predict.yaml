@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+    - _self_
+    - data: pe6
+    - model: pe6_deep_prime_only
+    - logger: null
+    - trainer: default
+    - paths: default
+    - extras: default
+    - hydra: default
+    - callbacks: default
+    - experiment: null
+
+task_name: "predict"
+
+tags: ["dev"]
+
+# passing checkpoint path is necessary for evaluation
+ckpt_path: ???
+
+# Default prediction save path (can be overridden from CLI)
+model:
+    prediction_save_path: ${paths.output_dir}/predictions.csv

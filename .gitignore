@@ -163,6 +163,13 @@ notebooks/wandb/latest-run
 notebooks/wandb/**
 
 *.zip
-*.csv
+*.log
 
-*.png
+# Data protection (Ignore everything by default, allow specific files)
+data/*
+!data/sample_data.csv
+
+# Weights
+src/models/weights/*
+!src/models/weights/DeepPrime6-weights/
+!src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/

@@ -1,12 +1,14 @@
-from typing import Any, Dict, List, Tuple
-
-import hydra
 import rootutils
-from lightning import LightningDataModule, LightningModule, Trainer
-from lightning.pytorch.loggers import Logger
-from omegaconf import DictConfig
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+
+from typing import Any, Dict, List, Tuple  # noqa: E402
+
+import hydra  # noqa: E402
+from lightning import LightningDataModule, LightningModule, Trainer  # noqa: E402
+from lightning.pytorch.loggers import Logger  # noqa: E402
+from omegaconf import DictConfig  # noqa: E402
+
 # ------------------------------------------------------------------------------------ #
 # the setup_root above is equivalent to:
 # - adding project root dir to PYTHONPATH
@@ -18,13 +20,11 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # - loading environment variables from ".env" in root dir
 #
 # you can remove it if you:
-# 1. either install project as a package or move entry files to project root dir
-# 2. set `root_dir` to "." in "configs/paths/default.yaml"
-#
-# more info: https://github.com/ashleve/rootutils
+# 1. install project as a package: `pip install -e .`
+# 2. or manually set PYTHONPATH
 # ------------------------------------------------------------------------------------ #
 
-from src.utils import (
+from src.utils import (  # noqa: E40t2
     RankedLogger,
     extras,
     instantiate_loggers,
@@ -45,7 +45,17 @@ def evaluate(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     :param cfg: DictConfig configuration composed by Hydra.
     :return: Tuple[dict, dict] with metrics and dict with all instantiated objects.
     """
-    assert cfg.ckpt_path
+    # If ckpt_path is provided and is a .pt file, we handle it manually
+    # by overriding the baseline weight path.
+    ckpt_path = cfg.get("ckpt_path")
+    if ckpt_path and ckpt_path.endswith(".pt"):
+        log.info(f"Using vanilla .pt weight: {ckpt_path}")
+        # Override the baseline weights in the config before instantiation
+        cfg.model.model_weights.baseline = ckpt_path
+        # We don't pass it to trainer.test because it's not a Lightning checkpoint
+        ckpt_path = None
+    elif ckpt_path:
+        log.info(f"Using Lightning checkpoint: {ckpt_path}")
 
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
@@ -72,10 +82,9 @@ def evaluate(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         log_hyperparameters(object_dict)
 
     log.info("Starting testing!")
-    trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+    trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
 
-    # for predictions use trainer.predict(...)
-    # predictions = trainer.predict(model=model, dataloaders=dataloaders, ckpt_path=cfg.ckpt_path)
+
 
     metric_dict = trainer.callback_metrics
 

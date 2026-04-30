@@ -5,9 +5,9 @@
 defaults:
     - _self_
     - data: pe6 # which datamodule to use (src/data/*)
-    - model: pe6_resnet # which model to use (src/models/*)
+    - model: pe6_deep_prime_only # which model to use (src/models/*)
     - callbacks: default
-    - logger: wandb # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
+    - logger: csv # set logger here or use command line (e.g. `python train.py logger=wandb`)
     - trainer: default
     - paths: default
     - extras: default
@@ -16,13 +16,6 @@ defaults:
     # experiment configs allow for version control of specific hyperparameters
     # e.g. best hyperparameters for given model and datamodule
     - experiment: null
-
-    # config for hyperparameter optimization
-    - hparams_search: null
-
-    # optional local config for machine/user specific settings
-    # it's optional since it doesn't need to exist and is excluded from version control
-    - optional local: default
 
     # debugging config (enable through command line, e.g. `python train.py debug=default)
     - debug: null
@@ -34,13 +27,7 @@ task_name: "DeepPrime6"
 # you can overwrite this in experiment configs
 # overwrite from command line with `python train.py tags="[first_tag, second_tag]"`
 tags:
-    [
-        "6f-standalone-regression",
-        "cnn-feature-merger",
-        "optimized-original-loss",
-        "read-count-filter-search",
-        "three-reps",
-    ]
+    ["DeepPrime6"]
 
 # set False to skip model training
 train: True

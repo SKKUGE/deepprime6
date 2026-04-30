@@ -131,7 +131,7 @@ class GeneInteractionModel(nn.Module):
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(d_hidden2, d_out_features, bias=False),
-            nn.BatchNorm1d(d_out_features),  # This layer is not in the original paper
+            nn.BatchNorm1d(d_out_features), # This layer is not in the original paper
             nn.ReLU(),  # This layer is not in the original paper
         )  # TODO: ablation study
 
@@ -322,12 +322,12 @@ if __name__ == "__main__":
     _ = GeneInteractionModel()
     print("GeneInteractionModel is successfully initialized.")
 
-
 class GeneInteractionModelVanilla(nn.Module):
-    """GeneInteractionModelVanilla is a PyTorch module that perfectly replicates the structural
-    definition of the gene interaction model from DeepPrime (Yu et al., 2023 Cell) as it is
-    instantiated in genet package, specifically without the final BN and ReLU layers in the `d`
-    module, and without the BN layer in the `head` module."""
+    """GeneInteractionModelVanilla is a PyTorch module that perfectly replicates the structural 
+    definition of the gene interaction model from DeepPrime (Yu et al., 2023 Cell)
+    as it is instantiated in genet package, specifically without the final BN and ReLU layers
+    in the `d` module, and without the BN layer in the `head` module.
+    """
 
     def __init__(
         self,
@@ -418,7 +418,7 @@ class GeneInteractionModelVanilla(nn.Module):
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(d_hidden2, d_out_features, bias=False),
-        )
+        ) 
 
         # Vanilla: head matches Genet's original
         self.head = nn.Sequential(
