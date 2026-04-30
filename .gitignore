@@ -171,4 +171,5 @@ data/*
 
 # Weights
 src/models/weights/*
-
+!src/models/weights/DeepPrime6-weights/
+!src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/
