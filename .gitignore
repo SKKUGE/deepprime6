@@ -163,6 +163,12 @@ notebooks/wandb/latest-run
 notebooks/wandb/**
 
 *.zip
-*.csv
+*.log
 
-*.png
+# Data protection (Ignore everything by default, allow specific files)
+data/*
+!data/sample_data.csv
+
+# Weights
+src/models/weights/*
+

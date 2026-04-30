@@ -2,7 +2,7 @@
 
 defaults:
     - _self_
-    - data: pe6 # choose datamodule with `test_dataloader()` for evaluation
+    - data: pe6
     - model: pe6_deep_prime_only
     - logger: null
     - trainer: default
@@ -12,9 +12,13 @@ defaults:
     - callbacks: default
     - experiment: null
 
-task_name: "eval"
+task_name: "predict"
 
 tags: ["dev"]
 
 # passing checkpoint path is necessary for evaluation
 ckpt_path: ???
+
+# Default prediction save path (can be overridden from CLI)
+model:
+    prediction_save_path: ${paths.output_dir}/predictions.csv

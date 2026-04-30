@@ -2,7 +2,7 @@
 
 # Default values
 EXPERIMENT="pe6a-DP-baseline"
-CKPT_PATH="src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt"
+CKPT_PATH="src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/*.pt"
 
 # Function to display help
 show_help() {
@@ -24,8 +24,6 @@ while [[ "$#" -gt 0 ]]; do
         --help) show_help; exit 0 ;;
         -*) echo "Unknown option: $1"; show_help; exit 1 ;;
         *) 
-            # If it doesn't start with --, and is not a hydra override (no =),
-            # treat first positional as experiment and second as checkpoint.
             if [[ "$1" != *=* ]]; then
                 if [ $POS_COUNT -eq 0 ]; then
                     EXPERIMENT="$1"
@@ -34,29 +32,24 @@ while [[ "$#" -gt 0 ]]; do
                     CKPT_PATH="$1"
                     POS_COUNT=2
                 else
-                    break # Pass remaining to hydra
+                    break
                 fi
             else
-                break # Pass remaining to hydra (includes key=value pairs)
+                break
             fi
             ;;
     esac
     shift
 done
 
-if [ ! -f "$CKPT_PATH" ]; then
-    echo "Error: Checkpoint file not found: $CKPT_PATH"
-    exit 1
-fi
-
 echo "=================================================================="
-echo "Starting inference for experiment: $EXPERIMENT"
+echo "Starting evaluation for experiment: $EXPERIMENT"
 echo "Using checkpoint: $CKPT_PATH"
 if [ "$#" -gt 0 ]; then
     echo "Additional overrides: $@"
 fi
 echo "=================================================================="
 
-python src/predict.py experiment="$EXPERIMENT" ckpt_path="$CKPT_PATH" "$@"
+python src/eval.py experiment="$EXPERIMENT" ckpt_path="$CKPT_PATH" "$@"
 
-echo "Inference completed."
+echo "Evaluation completed."

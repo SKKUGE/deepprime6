@@ -9,22 +9,7 @@ from lightning import LightningDataModule, LightningModule, Trainer  # noqa: E40
 from lightning.pytorch.loggers import Logger  # noqa: E402
 from omegaconf import DictConfig  # noqa: E402
 
-# ------------------------------------------------------------------------------------ #
-# the setup_root above is equivalent to:
-# - adding project root dir to PYTHONPATH
-#       (so you don't need to force user to install project as a package)
-#       (necessary before importing any local modules e.g. `from src import utils`)
-# - setting up PROJECT_ROOT environment variable
-#       (which is used as a base for paths in "configs/paths/default.yaml")
-#       (this way all filepaths are the same no matter where you run the code)
-# - loading environment variables from ".env" in root dir
-#
-# you can remove it if you:
-# 1. install project as a package: `pip install -e .`
-# 2. or manually set PYTHONPATH
-# ------------------------------------------------------------------------------------ #
-
-from src.utils import (  # noqa: E40t2
+from src.utils import (  # noqa: E402
     RankedLogger,
     extras,
     instantiate_loggers,
@@ -36,11 +21,8 @@ log = RankedLogger(__name__, rank_zero_only=True)
 
 
 @task_wrapper
-def evaluate(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """Evaluates given checkpoint on a datamodule testset.
-
-    This method is wrapped in optional @task_wrapper decorator, that controls the behavior during
-    failure. Useful for multiruns, saving info about the crash, etc.
+def predict(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Generates predictions for a given input dataset.
 
     :param cfg: DictConfig configuration composed by Hydra.
     :return: Tuple[dict, dict] with metrics and dict with all instantiated objects.
@@ -52,7 +34,7 @@ def evaluate(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         log.info(f"Using vanilla .pt weight: {ckpt_path}")
         # Override the baseline weights in the config before instantiation
         cfg.model.model_weights.baseline = ckpt_path
-        # We don't pass it to trainer.test because it's not a Lightning checkpoint
+        # We don't pass it to trainer.predict because it's not a Lightning checkpoint
         ckpt_path = None
     elif ckpt_path:
         log.info(f"Using Lightning checkpoint: {ckpt_path}")
@@ -81,27 +63,24 @@ def evaluate(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         log.info("Logging hyperparameters!")
         log_hyperparameters(object_dict)
 
-    log.info("Starting testing!")
-    trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+    log.info("Starting inference!")
+    trainer.predict(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+
+    log.info("Inference completed.")
+
+    return {}, object_dict
 
 
-
-    metric_dict = trainer.callback_metrics
-
-    return metric_dict, object_dict
-
-
-@hydra.main(version_base="1.3", config_path="../configs", config_name="eval.yaml")
+@hydra.main(version_base="1.3", config_path="../configs", config_name="predict.yaml")
 def main(cfg: DictConfig) -> None:
-    """Main entry point for evaluation.
+    """Main entry point for inference.
 
     :param cfg: DictConfig configuration composed by Hydra.
     """
     # apply extra utilities
-    # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
     extras(cfg)
 
-    evaluate(cfg)
+    predict(cfg)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,9 @@ from torch.utils.data import DataLoader, Dataset
 
 from .components import preprocess_data
 from .components.data_model.collate_func import custom_collate_fn
+from ..utils import RankedLogger
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 
 class PE6DataModule(LightningDataModule):
@@ -60,6 +63,7 @@ class PE6DataModule(LightningDataModule):
         dataloader: Optional[Dict[str, Any]] = None,
         dataset: Optional[Dict[str, Any]] = None,
         skip_preprocessing: bool = False,
+        csv_path: Optional[str] = None,
     ) -> None:
         """Initialize a `MNISTDataModule`.
 
@@ -84,9 +88,16 @@ class PE6DataModule(LightningDataModule):
         self.save_hyperparameters()
 
         self.data_dir: str = data_dir
-        self.processed_data_path: str = (
-            pathlib.Path(data_dir).parent / "processed_data.parquet"
-        )  # TODO: How to determine the path dynamically?
+        # Use a unique name for processed data based on the input data_dir to avoid stale data
+        data_path_obj = pathlib.Path(data_dir)
+        if data_path_obj.is_file():
+            self.processed_data_path: str = str(
+                data_path_obj.parent / f"{data_path_obj.stem}_processed.parquet"
+            )
+        else:
+            self.processed_data_path: str = str(
+                data_path_obj.parent / f"{data_path_obj.name}_processed.parquet"
+            )
 
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
@@ -120,9 +131,10 @@ class PE6DataModule(LightningDataModule):
         """
         if not self.hparams.skip_preprocessing:
             if not pathlib.Path(self.processed_data_path).exists():
-                preprocess_data(data_dir=self.data_dir, output_file="processed_data.parquet")
+                output_filename = pathlib.Path(self.processed_data_path).name
+                preprocess_data(data_dir=self.data_dir, output_file=output_filename)
             else:
-                print(
+                log.info(
                     f"Skipping preprocessing as {self.processed_data_path} already exists. To force preprocessing, delete the file."
                 )
 
@@ -142,6 +154,41 @@ class PE6DataModule(LightningDataModule):
         from src.data.components.data_model.pe6_dprime_dataset import (
             PE6DeepPrimeDataset,
         )
+        from src.data.components.pe6_preprocess_data import preprocess_data as preprocess_func
+
+        # Handle predict stage specifically if csv_path is provided
+        if stage == "predict" and self.hparams.csv_path:
+            log.info(f"Loading prediction data from {self.hparams.csv_path}")
+            df = pd.read_csv(self.hparams.csv_path)
+            # We need to preprocess if it's raw CSV
+            processed_df = preprocess_func(data=df)
+            
+            # Load normalization stats if possible
+            norm_mean = None
+            norm_std = None
+            if (
+                "norm_mean_path" in self.hparams.dataset
+                and "norm_std_path" in self.hparams.dataset
+            ):
+                try:
+                    norm_mean = pd.read_csv(
+                        self.hparams.dataset.norm_mean_path, index_col=0, header=None
+                    ).squeeze("columns")
+                    norm_std = pd.read_csv(
+                        self.hparams.dataset.norm_std_path, index_col=0, header=None
+                    ).squeeze("columns")
+                except Exception as e:
+                    log.warning(f"Failed to load normalization files: {e}")
+
+            self.data_predict = PE6DeepPrimeDataset(
+                processed_df,
+                self.hparams.datafilter,
+                read_count_filter=0, # No filter for prediction
+                norm_mean=norm_mean,
+                norm_std=norm_std,
+            )
+            return
+
 
         # Divide batch size by the number of devices.
         if self.trainer is not None:
@@ -295,6 +342,29 @@ class PE6DataModule(LightningDataModule):
             pin_memory=self.hparams.dataloader.pin_memory,
             shuffle=False,
             persistent_workers=self.hparams.dataloader.persistent_workers,
+            collate_fn=custom_collate_fn,
+        )
+
+    def predict_dataloader(self) -> DataLoader[Any]:
+        """Create and return the predict dataloader.
+
+        :return: The predict dataloader.
+        """
+        dataset = getattr(self, "data_predict", None)
+        if dataset is None:
+            log.info("No prediction data specifically loaded. Using test data for prediction fallback.")
+            dataset = self.data_test
+
+        if dataset is None:
+            raise RuntimeError("Neither prediction data nor test data is available for predict_dataloader. "
+                             "Make sure to call setup() properly.")
+
+        return DataLoader(
+            dataset=dataset,
+            batch_size=self.batch_size_per_device,
+            num_workers=self.hparams.dataloader.num_workers,
+            pin_memory=self.hparams.dataloader.pin_memory,
+            shuffle=False,
             collate_fn=custom_collate_fn,
         )
 

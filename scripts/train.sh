@@ -24,6 +24,6 @@ if [ "$#" -gt 0 ]; then
 fi
 echo "=================================================================="
 
-python src/train.py experiment="$EXPERIMENT" "$@"
+nohup python src/train.py experiment="$EXPERIMENT" "$@" > ${EXPERIMENT}_train.out 2>&1 &
 
-echo "Training completed."
+echo "Training started. Check ${EXPERIMENT}_train.out for progress."

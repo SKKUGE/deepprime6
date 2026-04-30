@@ -41,96 +41,85 @@ The codebase supports training and evaluation on custom datasets provided in CSV
 
 If you are providing your own dataset (e.g., `data/my_dataset.csv`), ensure your CSV file includes the following required columns for the preprocessing pipeline (`skip_preprocessing=False`):
 
-(#TBD: update this with minimum required columns)
-- **`WideTargetSequence`**: Extended sequence context around the target site (e.g., 200nt).
-- **`Guide`**: The 20-nt spacer sequence.
+- **`ID`**: Unique identifier for the sample (optional, used for logging).
+- **`WideTargetSequence`**: Extended sequence context around the target site (at least 21 nt upstream and 53 nt downstream from nick site).
+- **`Guide`**: The 19 or 20-nt spacer sequence.
 - **`Edit_type`**: Type of edit (`Sub`, `Ins`, or `Del`).
 - **`Edit length`**: Length of the intended edit (e.g., `1`).
 - **`Edit position`**: Position of the edit relative to the nick site.
 - **`PBS`**: Primer binding site sequence.
 - **`RTT`**: Reverse transcriptase template sequence.
-- **`OligoSequence_fixed_length`**: Context sequence from which the 74-nt sequence is extracted.
-- **`leading G`**: Whether there is a leading G in the guide (e.g., `G` or `-`).
-- **Target columns**: Efficiency target metric (e.g., `Normalized+3rep_HEK-M-3-7D+pe_ratio_%`).
+- **`leading G`**: Whether there is a leading G in the guide (`G` or `-`).
+- **Target columns**: Efficiency target metrics. The pipeline expects original research names which are mapped to readable names like `PE6a(+PEmaxCas9)` in `src/utils/dataprep.py`.
+    - Example for PE6a: `Normalized+3rep_HEK-M-3-7D+pe_ratio_%`
+    - Example for read counts (used for filtering): `HEK-M-3-7D-UAR+total_read_counts`
 
 *Note: The target columns are mapped to readable names like `PE6a(+PEmaxCas9)` in `src/utils/dataprep.py` using `RENAME_MAP` and `RENAME_MAP_FOR_VIS`. If your efficiency column is named differently, update these dictionaries or rename your column to match an existing key.*
 
 If your data is **already preprocessed** and contains all DeepPrime feature columns (e.g., `Target`, `Masked_EditSeq`, `PBS_len`, thermodynamic/GC features, etc.), you can set `data.skip_preprocessing=True` in your Hydra configuration to bypass the preprocessing step.
 
-### Example: Verifying the Pipeline
+### Usage Guide
 
-We provide a minimal verifiable dataset in `data/sample_data.csv`, which contains 10 example rows with all the required columns for PE6a(+PEmaxCas9) editing efficiencies.
+We provide simple bash wrapper scripts to abstract away Hydra configurations and quickly run training, evaluation, and inference.
 
-To test the entire pipeline (preprocessing -> training -> evaluation) locally using this minimal dataset, run the following commands:
+### 1. Training (Train)
+Train a model using a predefined experiment configuration.
 
-**1. Training**
 ```bash
-# We set model.model_weights.baseline=null to train from scratch for testing
-# We override the data_dir to point to the sample dataset
+# General training (defaults to GPU if available)
+bash scripts/train.sh pe6a-DP-baseline
+
+# Training with sample data on CPU (for verification)
 bash scripts/train.sh pe6a-DP-baseline \
     data.data_dir=data/sample_data.csv \
     trainer=cpu \
     data.batch_size=2 \
-    model.model_weights.baseline=null \
-    logger=csv \
-    ~callbacks.rich_progress_bar
+    model.model_weights.baseline=null
 ```
 
-**2. Inference (Evaluation)**
-After training, evaluate the generated checkpoint (replace the checkpoint path with your generated path):
+### 2. Evaluation (Test)
+Evaluate a trained model on a test set (requires ground truth labels). This uses `trainer.test()` under the hood.
+
 ```bash
+# Evaluate the ensemble baseline models (*.pt)
+bash scripts/eval.sh pe6a-DP-baseline \
+    --ckpt "src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/*.pt" \
+    trainer=cpu
+
+# Evaluate a specific Lightning checkpoint (.ckpt)
+bash scripts/eval.sh pe6a-DP-baseline \
+    --ckpt logs/PE6a-ft/runs/YYYY-MM-DD_HH-MM-SS/checkpoints/epoch_xxx.ckpt
+```
+
+### 3. Inference (Predict)
+Run inference on new data where labels are not required. This uses `trainer.predict()` and saves predictions to a CSV file.
+
+```bash
+# Run inference with the SOTA fine-tuned model
 bash scripts/predict.sh pe6a-DP-baseline \
-    logs/PE6a-ft/runs/YYYY-MM-DD_HH-MM-SS/checkpoints/epoch_xxx.ckpt \
-    data.data_dir=data/sample_data.csv \
-    trainer=cpu \
-    data.batch_size=2 \
-    logger=csv \
-    ~callbacks.rich_progress_bar
+    src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt
+
+# Run inference on custom data
+bash scripts/predict.sh pe6a-DP-baseline \
+    src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt \
+    data.data_dir=data/my_new_data.csv
 ```
 
-## State-of-the-Art (SOTA) Models
+## Model Weights
 
-The following table lists the final SOTA models reported in the paper. You can use the provided `scripts/predict.sh` script to evaluate these checkpoints or `scripts/train.sh` to fine-tune them further.
+The following table lists the model weights reported in the paper. You can use the provided `scripts/predict.sh` script to evaluate these checkpoints or `scripts/train.sh` to fine-tune them further.
 
-| PE type | Model | Run ID | Checkpoint path | Spearman |
-|---|---|---:|---|---:|
-| PE6a | PE6a (MainFT) | `bt1dgmi7` | `weights/pe6a_mainft.ckpt` | 0.659 |
-| PEmaxdRNaseH | PEmaxdRNaseH (MainFT) | `85mculrb` | `weights/pemaxdrnaseh_mainft.ckpt` | 0.711 |
-| PE6b | PE6b (MainFT) | `2hyiekc1` | `weights/pe6b_mainft.ckpt` | 0.685 |
-| PE6c | PE6c (MainFT) | `5wu8hpi4` | `weights/pe6c_mainft.ckpt` | 0.694 |
 
-### Additional Pre-trained Weights
+[Model weights (move to Google Drive)][1]
 
-We also provide models trained from scratch (without DeepPrime transfer learning) for comparison:
+| PE type | Checkpoint path |
+|---|---:|
+| PE6a | `src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt` |
+| PEmaxdRNaseH | `src/models/weights/DeepPrime6-weights/pemaxdrnaseh_mainft.ckpt` |
+| PE6b | `src/models/weights/DeepPrime6-weights/pe6b_mainft.ckpt` |
+| PE6c | `src/models/weights/DeepPrime6-weights/pe6c_mainft.ckpt` |
 
-- **PE6a (Scratch):** `weights/pe6a_scratch.ckpt`
-- **PE6b (Scratch):** `weights/pe6b_scratch.ckpt`
-- **PE6c (Scratch):** `weights/pe6c_scratch.ckpt`
-- **PEmaxdRNaseH (Scratch):** `weights/pemaxdrnaseh_scratch.ckpt`
-
-## Quick Start
-
-We provide simple bash wrapper scripts to abstract away Hydra configurations and quickly run training or inference.
-Here is an example of training the PE6a model:
-
-### Training a model
-
-```bash
-# Train a model using a predefined experiment configuration
-bash scripts/train.sh pe6a-DP-baseline
-
-# Train with custom hyperparameters (e.g., using CPU and a different batch size)
-bash scripts/train.sh pe6a-DP-baseline trainer=cpu data.batch_size=128
-```
-
-### Evaluating a checkpoint
-```bash
-# Evaluate the PE6a SOTA model on the test set
-bash scripts/predict.sh pe6a-DP-baseline weights/pe6a_mainft.ckpt
-
-# Evaluate with custom overrides (e.g., using CPU)
-bash scripts/predict.sh pe6a-DP-baseline weights/pe6a_mainft.ckpt trainer=cpu
-```
+[1]: https://drive.google.com/file/d/1L9IRg5CMOv_NA2mFYY1aARYEBT-BTP43/view?usp=sharing
 
 ## Customizing Configurations
 
@@ -183,6 +172,15 @@ python src/train.py experiment=pe6a-DP-baseline data.data_dir=data/my_dataset.cs
 python src/train.py experiment=pe6a-DP-baseline ckpt_path=/path/to/last.ckpt
 ```
 
+### Hyperparameter Optimization
+```bash
+nohup python src/train.py -m \
+  experiment=pe6a-DP-baseline \
+  hparams_search=pe6-optuna \
+  >> output-pe6a-optuna.log 2>&1 &
+```
+
+
 ### Config directory structure
 
 ```
@@ -192,7 +190,7 @@ configs/
   data/
     pe6.yaml              DataModule config (splits, batch size, preprocessing)
   model/
-    pe6_deep_prime_only_vanilla.yaml   Model architecture + optimizer + loss
+    pe6_deep_prime_only.yaml           Model architecture + optimizer + loss
   experiment/
     pe6a-DP-baseline.yaml Example experiment (use as template for other PE types)
   callbacks/
@@ -209,19 +207,7 @@ configs/
   hydra/                  Hydra output directory patterns
 ```
 
-## Inference (evaluation)
 
-```bash
-# Evaluate a checkpoint on the test split
-python src/eval.py \
-    experiment=pe6a-DP-baseline \
-    ckpt_path=/absolute/path/to/checkpoint.ckpt \
-    logger=csv
-```
-
-The experiment config passed to `eval.py` determines which **data split** and
-**model architecture** are used.  The `ckpt_path` must point to the `.ckpt` file
-saved by the corresponding training run.
 
 ## Environment variables
 

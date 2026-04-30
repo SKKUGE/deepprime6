@@ -1,13 +1,13 @@
 import glob
 import logging
+import os
 from typing import Any, Dict, Tuple
 
 import pandas as pd
 import torch
 
 try:
-    import wandb
-    import wandb.plot
+    import wandb  # noqa: F401
     _WANDB_AVAILABLE = True
 except (ImportError, AttributeError):
     _WANDB_AVAILABLE = False
@@ -23,7 +23,7 @@ from .components.blocks.parallel import ParallelDeepPrimeModels
 log = logging.getLogger(__name__)
 
 
-class PE6OriginalDeepPrimeModule(LightningModule):
+class PE6DeepPrimeModule(LightningModule):
     """A `LightningModule` implements 8 key methods:
 
     ```python
@@ -63,6 +63,7 @@ class PE6OriginalDeepPrimeModule(LightningModule):
         model_weights: Dict[str, Any],  # Path to the pre-defined model weights
         compile: bool,
         criterion: Dict[str, Any],  # Loss function
+        prediction_save_path: str = "test_predictions.csv",
     ) -> None:
         # Inference
         """Initialize a `GeneInteractionLitModule`.
@@ -140,45 +141,98 @@ class PE6OriginalDeepPrimeModule(LightningModule):
         self.test_targets = []
         self.test_annot = []
 
+        # For inference (prediction) results
+        self.predict_preds = []
+        self.predict_targets = []
+        self.predict_annot = []
+
     @staticmethod
     def _remap_genet_keys(genet_sd, model):
         """Remap genet state_dict keys to match our model's layer indices.
 
-        Our GeneInteractionModelOriginalImplementation adds BatchNorm1d layers
-        in the `d` module for domain adaptation, which shifts the Sequential indices:
-            genet: d.0(Linear) → d.3(Linear) → d.6(Linear)
-            ours:  d.0(Linear) → d.1(BN) → d.4(Linear) → d.5(BN) → d.8(Linear) → d.9(BN)
+        Genet weights (.pt) typically have:
+            d: d.0(Linear) -> d.1(ReLU) -> d.2(Dropout) -> d.3(Linear) -> d.4(ReLU) -> d.5(Dropout) -> d.6(Linear)
+            head: head.0(Dropout) -> head.1(Linear)
+
+        Our GeneInteractionModelOriginalImplementation adds BatchNorm1d layers:
+            ours: d.0(Linear) -> d.1(BN) -> d.2(ReLU) -> d.3(Dropout) -> d.4(Linear) -> d.5(BN) -> d.6(ReLU) -> d.7(Dropout) -> d.8(Linear) -> d.9(BN)
+            ours: head.0(BN) -> head.1(Dropout) -> head.2(Linear)
         """
-        if model.__class__.__name__ == "GeneInteractionModelVanilla":
-            # For Vanilla model, the structure in the `d` and `head` module exactly matches Genet's.
-            # No remapping is needed.
-            our_keys = set(model.state_dict().keys())
+        model_name = model.__class__.__name__
+        our_keys = set(model.state_dict().keys())
+        
+        # Determine if the current model HAS BNs in 'd' module to decide on remapping
+        # This makes it robust even if class names change
+        has_bn_in_d = any("d.1.weight" in k or "d.1.running_mean" in k for k in our_keys)
+        has_bn_in_head = any("head.0.weight" in k or "head.0.running_mean" in k for k in our_keys)
+
+        if not has_bn_in_d and not has_bn_in_head:
+            # Matches Vanilla / Original DeepPrime structure
             remapped = {k: v for k, v in genet_sd.items() if k in our_keys}
             skipped = [k for k in genet_sd.keys() if k not in our_keys]
             if skipped:
-                print(f"  [remap] Skipped {len(skipped)} keys not in Vanilla model: {skipped}")
+                log.info(f"  [remap] No BNs detected in model ({model_name}). Identity mapping used. Skipped {len(skipped)} keys from Genet SD.")
             return remapped
 
+        # Remapping for models WITH BNs (like our current OriginalImplementation)
         KEY_MAP = {
-            "d.3.weight": "d.4.weight",  # Linear(96→64)
-            "d.6.weight": "d.8.weight",  # Linear(64→128)
+            "d.3.weight": "d.4.weight",
+            "d.6.weight": "d.8.weight",
+            "head.1.weight": "head.2.weight",
+            "head.1.bias": "head.2.bias",
         }
-        our_keys = set(model.state_dict().keys())
+        
         remapped = {}
         loaded, skipped = [], []
         for k, v in genet_sd.items():
             new_key = KEY_MAP.get(k, k)
             if new_key in our_keys:
                 remapped[new_key] = v
-                loaded.append(f"{k} → {new_key}" if k != new_key else k)
+                loaded.append(f"{k} -> {new_key}" if k != new_key else k)
             else:
                 skipped.append(k)
+        
         if skipped:
-            print(f"  [remap] Skipped {len(skipped)} keys not in our model: {skipped}")
-        if any(k != v.split(" → ")[0] if " → " in v else False for v in loaded):
-            remapped_keys = [l for l in loaded if "→" in l]
-            print(f"  [remap] Remapped keys: {remapped_keys}")
+            log.info(f"  [remap] BNs detected in model ({model_name}). Applied remapping. Skipped {len(skipped)} keys.")
         return remapped
+
+    def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True):
+        """Override to handle remapping from legacy checkpoints.
+        
+        Legacy checkpoints (.ckpt) were often trained with BNs. 
+        When evaluating with Vanilla (no BNs), we need to remap the Linear layers.
+        """
+        our_keys = set(self.state_dict().keys())
+        ckpt_keys = set(state_dict.keys())
+        
+        # Check if the checkpoint HAS BNs but the model DOES NOT
+        has_bn_in_ckpt = any(".d.1.weight" in k for k in ckpt_keys)
+        has_bn_in_model = any(".d.1.weight" in k for k in our_keys)
+        
+        if has_bn_in_ckpt and not has_bn_in_model:
+            log.info("  [load_state_dict] Legacy checkpoint (with BNs) detected. Remapping to BN-less model...")
+            remapped_sd = {}
+            # Generic remapping for ensemble models
+            # feature_extractor.models.X.d.4.weight -> feature_extractor.models.X.d.3.weight
+            # feature_extractor.models.X.d.8.weight -> feature_extractor.models.X.d.6.weight
+            # feature_extractor.models.X.head.2.weight -> feature_extractor.models.X.head.1.weight
+            for k, v in state_dict.items():
+                new_key = k
+                if ".d.4." in k:
+                    new_key = k.replace(".d.4.", ".d.3.")
+                elif ".d.8." in k:
+                    new_key = k.replace(".d.8.", ".d.6.")
+                elif ".head.2." in k:
+                    new_key = k.replace(".head.2.", ".head.1.")
+                
+                if new_key in our_keys:
+                    remapped_sd[new_key] = v
+                else:
+                    # Skip BN keys and other mismatched ones
+                    pass
+            return super().load_state_dict(remapped_sd, strict=False)
+            
+        return super().load_state_dict(state_dict, strict=strict)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
@@ -258,8 +312,8 @@ class PE6OriginalDeepPrimeModule(LightningModule):
         """
         loss, preds, targets, _ = self.model_step(batch)
 
-        preds = preds.squeeze()
-        targets = targets.squeeze()
+        preds = preds.flatten()
+        targets = targets.flatten()
 
         self.train_loss.update(loss)
         self.train_pearson.update(preds, targets)
@@ -320,8 +374,8 @@ class PE6OriginalDeepPrimeModule(LightningModule):
         """
         loss, preds, targets, _ = self.model_step(batch)
 
-        preds = preds.squeeze()
-        targets = targets.squeeze()
+        preds = preds.flatten()
+        targets = targets.flatten()
 
         # update loss and metrics
         self.val_loss.update(loss)
@@ -390,8 +444,8 @@ class PE6OriginalDeepPrimeModule(LightningModule):
         """
         loss, preds, targets, annot = self.model_step(batch)
 
-        preds = preds.squeeze()
-        targets = targets.squeeze()
+        preds = preds.flatten()
+        targets = targets.flatten()
 
         # Update loss and metrics
         self.test_loss.update(loss)
@@ -402,10 +456,30 @@ class PE6OriginalDeepPrimeModule(LightningModule):
         self.test_preds.extend(preds.tolist())
         self.test_targets.extend(targets.tolist())
 
-        # Each string is fragmented intp a list of characters
+        # Each string is fragmented into a list of characters
         # So, we need to flatten the list of lists
         annot = ["".join(frag_id) for frag_id in annot]
         self.test_annot.extend(annot)
+
+    def predict_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
+        """Perform a single predict step on a batch of data.
+
+        :param batch: A batch of data (a tuple) containing the input tensor of images and target
+            labels.
+        :param batch_idx: The index of the current batch.
+        """
+        _, preds, targets, annot = self.model_step(batch)
+
+        preds = preds.flatten()
+        targets = targets.flatten()
+
+        # Store predictions and targets for inference
+        self.predict_preds.extend(preds.tolist())
+        self.predict_targets.extend(targets.tolist())
+
+        # Each string is fragmented into a list of characters
+        annot = ["".join(frag_id) for frag_id in annot]
+        self.predict_annot.extend(annot)
 
     def on_test_epoch_end(self) -> None:
         """Lightning hook that is called when a test epoch ends."""
@@ -447,21 +521,38 @@ class PE6OriginalDeepPrimeModule(LightningModule):
 
         result_table = result_table.reset_index(drop=False)
 
-        # Save to CSV for reproduction for debugging
-        if self.hparams.get("prediction_save_path"):
-            result_table.to_csv(self.hparams.prediction_save_path, index=False)
-
-
         if _WANDB_AVAILABLE and self.trainer.logger is not None:
             if self.trainer.logger.__class__.__name__ == "WandbLogger":
-                try:
-                    self.trainer.logger.experiment.log(
-                        {
-                            "test/result_table": wandb.Table(dataframe=result_table),
-                        }
-                    )
-                except Exception as e:
-                    log.warning(f"Failed to log test result table to WandB: {e}")
+                log.info("Test results table calculation completed. (Export to WandB disabled per configuration)")
+
+    def on_predict_epoch_end(self) -> None:
+        """Lightning hook that is called when a predict epoch ends."""
+        # logging test prediction and target values
+        result_table = pd.DataFrame(
+            list(zip(self.predict_targets, self.predict_preds, self.predict_annot)),
+            columns=["Target", "Prediction", "ID"],
+        )
+
+        result_table["PE_type"] = [
+            self.hparams.dataprops.PE_class_list[i % len(self.hparams.dataprops.PE_class_list)]
+            for i in range(len(result_table))
+        ]
+
+        result_table = result_table.reset_index(drop=False)
+
+        # Save to CSV for inference results
+        save_path = self.hparams.prediction_save_path
+        if save_path:
+            dir_path = os.path.dirname(save_path)
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
+            result_table.to_csv(save_path, index=False)
+            log.info(f"Predictions saved to: {save_path}")
+
+        # Reset accumulated data
+        self.predict_preds.clear()
+        self.predict_targets.clear()
+        self.predict_annot.clear()
 
         # Reset metrics
         self.test_loss.reset()
@@ -510,4 +601,4 @@ class PE6OriginalDeepPrimeModule(LightningModule):
 
 
 if __name__ == "__main__":
-    _ = PE6OriginalDeepPrimeModule(None, None, None, None)
+    _ = PE6DeepPrimeModule(None, None, None, None, None, False, None)

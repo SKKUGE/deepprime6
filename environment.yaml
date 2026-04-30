@@ -7,7 +7,7 @@ channels:
   - defaults
 
 dependencies:
-  - python=3.10
+  - python=3.11
   - pytorch=2.3.1
   - torchvision=0.18.1
   - pytorch-cuda=12.1
@@ -33,6 +33,6 @@ dependencies:
       - rootutils==1.0.7
       - genet==0.15.1
       - pycaret==3.3.2
-      - tensorflow==2.14.0
+      - tensorflow==2.15.0
       - tensorboard==2.14.1
       - protobuf==3.19.6

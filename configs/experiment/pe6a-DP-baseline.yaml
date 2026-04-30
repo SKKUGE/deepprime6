@@ -3,7 +3,7 @@
 defaults:
     - override /callbacks: default
     - override /data: pe6
-    - override /model: pe6_deep_prime_only_vanilla
+    - override /model: pe6_deep_prime_only
     - override /trainer: default
     - override /logger: csv
 
@@ -24,8 +24,8 @@ tags:
     ["6a-ft", "deep-prime-FT"]
 
 data:
-    data_dir: ${paths.data_dir}/sample_data.csv
-    batch_size: 2
+    data_dir: ${paths.data_dir}/rq3_train.csv
+    batch_size: 256
 
     datafilter:
         PE_types: ["PE6a(+PEmaxCas9)"]

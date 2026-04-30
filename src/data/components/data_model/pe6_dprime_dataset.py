@@ -137,8 +137,8 @@ class PE6DeepPrimeDataset(Dataset):
                 - len(sequence) is the length of the input sequence
                 - 4 is the number of nucleotide bases (A, C, G, T)
         """
-        mapping = {"A": 0, "C": 1, "G": 2, "T": 3, "X": 4}
-        map_seq = [mapping[i] for i in sequence]
+        mapping = {"A": 0, "C": 1, "G": 2, "T": 3, "X": 4, "N": 4}
+        map_seq = [mapping[i] for i in sequence.upper()]
         arr_seq = np.eye(5)[map_seq]
         return np.delete(arr_seq, -1, axis=1)
 
