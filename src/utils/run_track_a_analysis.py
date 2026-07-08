@@ -93,6 +93,12 @@ def calculate_correlations(df, cohort_name):
         
     res_df = pd.DataFrame(results)
     print(res_df.to_markdown(index=False))
+    
+    # Save correlation matrix to CSV
+    os.makedirs("notebooks/plots", exist_ok=True)
+    suffix = cohort_name.lower().replace(" ", "_")
+    res_df.to_csv(f"notebooks/plots/correlation_matrix_{suffix}.csv", index=False)
+    
     return res_df
 
 def generate_visualizations(df, res_df, cohort_name):

@@ -102,7 +102,10 @@ def preprocess_data(
         data = data[valid_seq_mask].copy()
 
     try:
-        data["DeepSpCas9_score"] = SpCas9().predict(data["deepspcas9_guide_30"])["SpCas9"]
+        unique_guides = data["deepspcas9_guide_30"].unique().tolist()
+        pred_res = SpCas9().predict(unique_guides)
+        score_map = dict(zip(pred_res["Target"], pred_res["SpCas9"]))
+        data["DeepSpCas9_score"] = data["deepspcas9_guide_30"].map(score_map)
     except Exception as e:
         print(f"Warning: DeepSpCas9 prediction failed with error: {e}")
         print("Filling DeepSpCas9_score with dummy value (0.0).")
@@ -284,16 +287,28 @@ def determine_seqs(
     return tmdata
 
 
-def determine_secondary_structure(df: pd.DataFrame) -> pd.DataFrame:
-    df["TmData"] = df["TmSequences"].apply(lambda x: determine_tm(x))
-    df["PegRNAExtensionData"] = df[["PBS", "RTT"]].apply(
+def _process_secondary_structure_chunk(chunk_df: pd.DataFrame) -> pd.DataFrame:
+    chunk_df["TmData"] = chunk_df["TmSequences"].apply(lambda x: determine_tm(x))
+    chunk_df["PegRNAExtensionData"] = chunk_df[["PBS", "RTT"]].apply(
         lambda x: determine_GC(x["PBS"], x["RTT"]), axis=1
     )
-    df["MFEData"] = df[["PBS", "RTT", "Guide"]].apply(
+    chunk_df["MFEData"] = chunk_df[["PBS", "RTT", "Guide"]].apply(
         lambda x: determine_MFE(x["PBS"], x["RTT"], x["Guide"]), axis=1
     )
+    return chunk_df
 
-    return df
+
+def determine_secondary_structure(df: pd.DataFrame) -> pd.DataFrame:
+    import numpy as np
+    from multiprocessing import Pool
+
+    num_cores = min(32, len(df))
+    df_split = np.array_split(df, num_cores)
+
+    with Pool(num_cores) as p:
+        processed_chunks = p.map(_process_secondary_structure_chunk, df_split)
+
+    return pd.concat(processed_chunks)
 
 
 def determine_tm(sequence_data: TmSequences) -> TmData:
@@ -308,7 +323,12 @@ def determine_tm(sequence_data: TmSequences) -> TmData:
     """
 
     def _calculate_tm(seq: str, nn_table: dict) -> float:
-        return mt.Tm_NN(seq=Seq(seq), nn_table=nn_table)
+        if len(seq) < 2:
+            return 0.0
+        try:
+            return mt.Tm_NN(seq=Seq(seq), nn_table=nn_table)
+        except Exception:
+            return 0.0
 
     def _calculate_tm4(seq_pairs: Tuple[str, str]) -> float:
         # genet's Tm4 iterates char-by-char, keeping only the LAST pair's result.

@@ -159,9 +159,12 @@ class PE6DataModule(LightningDataModule):
         # Handle predict stage specifically if csv_path is provided
         if stage == "predict" and self.hparams.csv_path:
             log.info(f"Loading prediction data from {self.hparams.csv_path}")
-            df = pd.read_csv(self.hparams.csv_path)
-            # We need to preprocess if it's raw CSV
-            processed_df = preprocess_func(data=df)
+            if self.hparams.csv_path.endswith(".parquet"):
+                processed_df = pd.read_parquet(self.hparams.csv_path)
+            else:
+                df = pd.read_csv(self.hparams.csv_path)
+                # We need to preprocess if it's raw CSV
+                processed_df = preprocess_func(data=df)
             
             # Load normalization stats if possible
             norm_mean = None
