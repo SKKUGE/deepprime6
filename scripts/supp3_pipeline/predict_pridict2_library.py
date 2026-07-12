@@ -3,7 +3,6 @@ import sys
 import pandas as pd
 import numpy as np
 import time
-import json
 import argparse
 from multiprocessing import Pool
 
@@ -37,8 +36,8 @@ def process_chunk(chunk_df):
         try:
             feat = extract_single_pegRNA_features(row)
             if feat is not None:
-                # Store original df index to map back
-                feat['orig_index'] = idx
+                # Store original raw CSV index (stored in 'index' column) to map back
+                feat['orig_index'] = int(row['index'])
                 features.append(feat)
         except Exception:
             pass
@@ -54,35 +53,13 @@ def main():
 
     print(f"Using input data directory: {data_dir}")
     print(f"Using output data directory: {output_dir}")
-    print("Loading original pegRNA dataset...")
-    df = pd.read_csv(os.path.join(data_dir, "MFE_randompeg_RHA30_0.71M_result.csv"))
+    parquet_path = os.path.join(output_dir, "preprocessed_pegrna_prediction.parquet")
+    print(f"Loading preprocessed dataset from {parquet_path}...")
+    df_filtered = pd.read_parquet(parquet_path)
     
-    print("Loading resolved genomic details...")
-    with open(os.path.join(data_dir, "resolved_pegrna_genomic_details.json")) as f:
-        resolved = json.load(f)
-        
-    print(f"Total resolved unique variant IDs: {len(resolved)}")
-    
-    # Filter df to only include successfully resolved variants
-    # Use exact raw ID matching
-    df_filtered = df[df['ID'].astype(str).isin(resolved.keys())].copy()
-    print(f"Filtered dataset rows: {len(df_filtered)}")
-    
-    # Set up fields needed by PRIDICT2 feature extractor
-    df_filtered['REF_ID'] = df_filtered['ID'].astype(str)
-    
-    # Extract 80nt target sequence from wt_pridict_200 (nick is at index 100)
-    df_filtered['WideTargetSequence'] = df_filtered['ID'].astype(str).map(lambda x: resolved[x]['wt_pridict_200'][75:155])
-    df_filtered['Guide'] = df_filtered['WideTargetSequence'].str.slice(8, 28)
-    
-    df_filtered['PBS'] = df_filtered['PBS_pegRNA_DNA']
-    df_filtered['RTT'] = df_filtered['RTT_template_DNA']
-    df_filtered['WildTypeSequence'] = df_filtered['ID'].astype(str).map(lambda x: resolved[x]['wt_pridict_200'])
-    df_filtered['PrimeEditedSequence'] = df_filtered['ID'].astype(str).map(lambda x: resolved[x]['ed_pridict_200'])
-    df_filtered['Edit_type'] = df_filtered['ID'].astype(str).map(lambda x: resolved[x]['edit_type'])
-    
-    # Reset index to make chunking clean
-    df_filtered = df_filtered.reset_index(drop=False) # 'index' contains original raw csv index
+    df_filtered['index'] = df_filtered['ID'].astype(int)
+    df_filtered['REF_ID'] = df_filtered['ID']
+    print(f"Loaded preprocessed dataset rows: {len(df_filtered)}")
     
     num_cores = 32
     print("Loading PRIDICT2.0 trained models (using run 0)...")

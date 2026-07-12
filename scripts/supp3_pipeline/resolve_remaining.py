@@ -230,12 +230,10 @@ def align_and_reconstruct(row, align_meta, transcript_seq):
 def main():
     print("Loading pegRNA CSV dataset...")
     df = pd.read_csv("data/MFE_randompeg_RHA30_0.71M_result.csv")
-    df['clean_id'] = df['ID'].astype(str).str.replace('clinic_', '').str.strip()
-    
     all_raw_ids = set(df['ID'].astype(str).unique())
     print(f"Total raw unique IDs in dataset: {len(all_raw_ids)}")
     
-    resolved_details_file = "data/resolved_pegrna_genomic_details.json"
+    resolved_details_file = "data/ncbi_cache/resolved_pegrna_genomic_details.json"
     
     # Load existing resolved details
     with open(resolved_details_file) as f:
@@ -243,20 +241,9 @@ def main():
         
     print(f"Loaded {len(resolved)} keys from JSON.")
     
-    # Smarter renaming/filtering:
-    renamed_resolved = {}
-    for key, details in resolved.items():
-        if key in all_raw_ids:
-            # Already a correct raw ID, keep it
-            renamed_resolved[key] = details
-        else:
-            # Clean ID, look up its raw ID
-            subset = df[df['clean_id'] == key]
-            if len(subset) > 0:
-                actual_raw_id = str(subset.iloc[0]['ID'])
-                renamed_resolved[actual_raw_id] = details
-                
-    print(f"Renamed resolved details count: {len(renamed_resolved)}")
+    # Keep only resolved entries that correspond to existing raw IDs
+    renamed_resolved = {k: v for k, v in resolved.items() if k in all_raw_ids}
+    print(f"Validated resolved details count: {len(renamed_resolved)}")
     
     # Identify unresolved raw IDs
     unresolved_ids = [rid for rid in all_raw_ids if rid not in renamed_resolved]
@@ -270,7 +257,7 @@ def main():
         return
         
     # Load transcript cache
-    tx_cache_file = "data/transcript_cache.json"
+    tx_cache_file = "data/ncbi_cache/transcript_cache.json"
     if os.path.exists(tx_cache_file):
         with open(tx_cache_file) as f:
             tx_cache = json.load(f)

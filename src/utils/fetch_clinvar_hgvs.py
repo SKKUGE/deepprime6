@@ -73,37 +73,55 @@ def fetch_batch_summaries(allele_ids):
 def main():
     print("Loading unique IDs from CSV...")
     df = pd.read_csv("data/MFE_randompeg_RHA30_0.71M_result.csv")
-    unique_ids = df['ID'].astype(str).str.replace('clinic_', '').str.strip().unique()
-    print(f"Total unique Allele IDs: {len(unique_ids)}")
+    raw_ids = df['ID'].astype(str).str.strip().unique()
+    print(f"Total unique raw IDs in CSV: {len(raw_ids)}")
     
+    # Create a mapping from clean numerical ID to a list of original raw IDs
+    clean_to_raw = {}
+    for rid in raw_ids:
+        clean_id = rid.replace('clinic_', '').strip()
+        if clean_id not in clean_to_raw:
+            clean_to_raw[clean_id] = []
+        clean_to_raw[clean_id].append(rid)
+        
+    # Exclude ambiguous IDs where the same numerical ID is shared by multiple raw designs
+    # (since they target different loci, ClinVar lookup by ID is guaranteed to be wrong for at least one)
+    allele_ids = []
+    for clean_id, raw_list in clean_to_raw.items():
+        if len(raw_list) == 1:
+            allele_ids.append(clean_id)
+        else:
+            print(f"[*] Excluding ambiguous ID from query/fallback: {clean_id} maps to {raw_list}")
+            
     mapping = {}
-    allele_ids = list(unique_ids)
     
     batch_size = 100
     total_ids = len(allele_ids)
-    print(f"Starting NCBI ClinVar queries for {total_ids} Allele IDs...")
+    print(f"Starting NCBI ClinVar queries for {total_ids} clean Allele IDs...")
     
     for i in range(0, total_ids, batch_size):
         batch = allele_ids[i : i + batch_size]
         print(f"Fetching batch {i // batch_size + 1} ({i} to {i + len(batch)})...")
         batch_map = fetch_batch_summaries(batch)
         
-        # Merge results
-        for aid, meta in batch_map.items():
-            mapping[aid] = meta
+        # Merge results, mapping them back to all original raw IDs
+        for clean_id, meta in batch_map.items():
+            if clean_id in clean_to_raw:
+                for raw_id in clean_to_raw[clean_id]:
+                    mapping[raw_id] = meta
             
         time.sleep(1.0) # NCBI API rate limit politeness
         
-    print(f"Successfully resolved {len(mapping)} / {len(unique_ids)} IDs.")
+    print(f"Successfully resolved {len(mapping)} / {len(raw_ids)} raw IDs.")
     
     # Check which IDs are missing
-    missing_ids = [aid for aid in allele_ids if aid not in mapping]
+    missing_ids = [rid for rid in raw_ids if rid not in mapping]
     print(f"Missing IDs count: {len(missing_ids)}")
     
-    os.makedirs("data", exist_ok=True)
-    with open("data/clinvar_hgvs_mapping.json", "w", encoding="utf-8") as f:
+    os.makedirs("data/ncbi_cache", exist_ok=True)
+    with open("data/ncbi_cache/clinvar_hgvs_mapping.json", "w", encoding="utf-8") as f:
         json.dump(mapping, f, indent=2, ensure_ascii=False)
-    print("Saved mapping to data/clinvar_hgvs_mapping.json")
+    print("Saved mapping to data/ncbi_cache/clinvar_hgvs_mapping.json")
 
 if __name__ == "__main__":
     main()

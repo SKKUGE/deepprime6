@@ -1,7 +1,71 @@
 import pandas as pd
-import numpy as np
 import os
 import argparse
+import json
+from Bio.Seq import Seq
+
+def find_true_spacer_and_pam(wt_200, pbs):
+    rc_pbs = str(Seq(pbs).reverse_complement())
+    pos_fwd = wt_200.find(pbs)
+    pos_rc = wt_200.find(rc_pbs)
+    
+    if pos_rc != -1:
+        approx_nick = pos_rc + len(pbs)
+    elif pos_fwd != -1:
+        approx_nick = pos_fwd
+    else:
+        return None, None, None, 999
+        
+    best_offset = 999
+    best_spacer = None
+    best_pam = None
+    best_strand = None
+    
+    for i in range(len(wt_200) - 23):
+        # 1. Forward strand SpCas9 site: spacer = wt_200[i:i+20], PAM = wt_200[i+20:i+23]
+        pam_fwd = wt_200[i+20 : i+23]
+        if pam_fwd[1:3] == "GG":
+            nick_fwd = i + 20
+            offset = abs(nick_fwd - approx_nick)
+            if offset < best_offset:
+                best_offset = offset
+                best_spacer = wt_200[i : i+20]
+                best_pam = pam_fwd
+                best_strand = '+'
+                
+        # 2. Reverse strand SpCas9 site: PAM = wt_200[i:i+3] (CC)
+        pam_rev = wt_200[i : i+3]
+        if pam_rev[0:2] == "CC":
+            nick_rev = i + 3
+            offset = abs(nick_rev - approx_nick)
+            if offset < best_offset:
+                best_offset = offset
+                best_spacer = str(Seq(wt_200[i+3 : i+23]).reverse_complement())
+                best_pam = str(Seq(pam_rev).reverse_complement())
+                best_strand = '-'
+                
+    if best_offset <= 6:
+        return best_spacer, best_pam, best_strand, best_offset
+    return None, None, None, best_offset
+
+def is_valid_design(row, resolved):
+    var_id = str(row['ID']).strip()
+    if var_id not in resolved:
+        # If not resolved yet, we allow it (it will be checked/resolved later)
+        return True
+    
+    wt_200 = resolved[var_id].get('wt_pridict_200', '').upper()
+    if not wt_200:
+        return True
+        
+    pbs = str(row['PBS_pegRNA_DNA']).upper()
+    
+    # Check if the design has a valid SpCas9 site within 6bp of the nick
+    _, _, _, offset = find_true_spacer_and_pam(wt_200, pbs)
+    if offset <= 6:
+        return True
+    return False
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -10,6 +74,17 @@ def main():
     args = parser.parse_args()
     data_dir = args.data_dir
     output_dir = args.output_dir
+
+    # Load resolved genomic details cache if it exists
+    resolved_path = os.path.join(data_dir, "ncbi_cache", "resolved_pegrna_genomic_details.json")
+    resolved = {}
+    if os.path.exists(resolved_path):
+        try:
+            with open(resolved_path) as f:
+                resolved = json.load(f)
+            print(f"Loaded {len(resolved)} resolved cache entries for candidate design verification.")
+        except Exception as e:
+            print(f"Warning: Failed to load resolved cache: {e}")
 
     print(f"Using input data directory: {data_dir}")
     print(f"Using output data directory: {output_dir}")
@@ -24,16 +99,43 @@ def main():
     pemaxdrnaseh = pd.read_csv(os.path.join(output_dir, "predictions_pemaxdrnaseh.csv"))
     pridict = pd.read_csv(os.path.join(output_dir, "predictions_pridict2.csv"))
     
-    # Map predictions back to raw using the index
+    # Map predictions back to raw using the original indices
     print("Mapping model scores to pegRNAs...")
-    raw['Score_DP_Base'] = raw.index.map(dp_base.set_index('index')['Prediction'])
-    raw['Score_PE6a'] = raw.index.map(pe6a.set_index('index')['Prediction'])
-    raw['Score_PE6b'] = raw.index.map(pe6b.set_index('index')['Prediction'])
-    raw['Score_PE6c'] = raw.index.map(pe6c.set_index('index')['Prediction'])
-    raw['Score_PEmax_dRNaseH'] = raw.index.map(pemaxdrnaseh.set_index('index')['Prediction'])
+    # Convert 'ID' column (which holds the original raw index as a string) to integer index
+    dp_base['orig_index'] = dp_base['ID'].astype(int)
+    pe6a['orig_index'] = pe6a['ID'].astype(int)
+    pe6b['orig_index'] = pe6b['ID'].astype(int)
+    pe6c['orig_index'] = pe6c['ID'].astype(int)
+    pemaxdrnaseh['orig_index'] = pemaxdrnaseh['ID'].astype(int)
+    
+    raw['Score_DP_Base'] = raw.index.map(dp_base.set_index('orig_index')['Prediction'])
+    raw['Score_PE6a'] = raw.index.map(pe6a.set_index('orig_index')['Prediction'])
+    raw['Score_PE6b'] = raw.index.map(pe6b.set_index('orig_index')['Prediction'])
+    raw['Score_PE6c'] = raw.index.map(pe6c.set_index('orig_index')['Prediction'])
+    raw['Score_PEmax_dRNaseH'] = raw.index.map(pemaxdrnaseh.set_index('orig_index')['Prediction'])
     raw['Score_PRIDICT_HEK'] = raw.index.map(pridict.set_index('index')['PRIDICT2_Score_HEK'])
     raw['Score_PRIDICT_K562'] = raw.index.map(pridict.set_index('index')['PRIDICT2_Score_K562'])
     
+    # Map preprocessed sequence context columns back to raw dataframe
+    parquet_path = os.path.join(output_dir, "preprocessed_pegrna_prediction.parquet")
+    if os.path.exists(parquet_path):
+        print("Mapping preprocessed genomic sequence contexts back to candidates...")
+        prep_df = pd.read_parquet(parquet_path)
+        prep_df['orig_index'] = prep_df['ID'].astype(int)
+        raw['WideTargetSequence'] = raw.index.map(prep_df.set_index('orig_index')['WideTargetSequence'])
+        raw['Guide'] = raw.index.map(prep_df.set_index('orig_index')['Guide'])
+        raw['WildTypeSequence'] = raw.index.map(prep_df.set_index('orig_index')['WildTypeSequence'])
+        raw['PrimeEditedSequence'] = raw.index.map(prep_df.set_index('orig_index')['PrimeEditedSequence'])
+        raw['Edit_type'] = raw.index.map(prep_df.set_index('orig_index')['Edit_type'])
+        raw['Edit_len'] = raw.index.map(prep_df.set_index('orig_index')['Edit_len'])
+        raw['Edit_pos'] = raw.index.map(prep_df.set_index('orig_index')['Edit_pos'])
+    
+    # Map resolved genomic context coordinates and gene info
+    raw['chr'] = raw['ID'].astype(str).map(lambda x: resolved.get(x, {}).get('chr', 'unknown'))
+    raw['strand'] = raw['ID'].astype(str).map(lambda x: resolved.get(x, {}).get('strand', 'unknown'))
+    raw['transcript'] = raw['ID'].astype(str).map(lambda x: resolved.get(x, {}).get('transcript', 'unknown'))
+    raw['gene'] = raw['ID'].astype(str).map(lambda x: resolved.get(x, {}).get('gene', 'unknown'))
+
     # Keep only successfully scored pegRNAs
     df = raw.dropna(subset=['Score_DP_Base', 'Score_PE6a', 'Score_PRIDICT_HEK']).copy()
     print(f"Total pegRNAs with complete predictions: {len(df)}")
@@ -54,6 +156,8 @@ def main():
     df['Average_Percentile'] = df[percentile_cols].mean(axis=1)
     df['Disagreement_Score'] = df[percentile_cols].std(axis=1)
     
+
+            
     # Track selected raw IDs to ensure 100% unique ClinVar variants
     # Since ID is unique for each variant (both normal and clinic are separate), we map on ID!
     # Cast ID to string
@@ -65,8 +169,11 @@ def main():
         for idx, row in candidates_pool.sort_values(sort_by_cols, ascending=ascending_list).iterrows():
             var_id = row['ID']
             if var_id not in selected_variants:
+                if not is_valid_design(row, resolved):
+                    continue
                 selected_variants.add(var_id)
                 row_dict = row.to_dict()
+                row_dict['orig_index'] = idx # Store original raw index
                 row_dict['Category'] = category
                 row_dict['Subcategory'] = subcategory
                 selected_rows.append(row_dict)

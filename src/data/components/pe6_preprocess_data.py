@@ -559,7 +559,7 @@ def make_output_df(df: pd.DataFrame) -> pd.DataFrame:
     def unpack_dataclass_columns(dataclass_cols: List[str], df: pd.DataFrame) -> pd.DataFrame:
         for dataclass_col in dataclass_cols:
             # Expand the dataclass column into a DataFrame
-            expanded_df = pd.DataFrame.from_records(df[dataclass_col].map(lambda x: asdict(x)))
+            expanded_df = pd.DataFrame.from_records(df[dataclass_col].map(lambda x: asdict(x)).tolist())
             # Alignment: Ensure the index matches the original DataFrame
             expanded_df.index = df.index
 

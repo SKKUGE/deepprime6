@@ -254,13 +254,12 @@ def align_and_reconstruct(row, align_meta, genomic_seq):
 def main():
     print("Loading pegRNA CSV dataset...")
     df = pd.read_csv("data/MFE_randompeg_RHA30_0.71M_result.csv")
-    df['clean_id'] = df['ID'].astype(str).str.replace('clinic_', '').str.strip()
-    
-    unique_ids = df['clean_id'].unique()
+    unique_ids = df['ID'].astype(str).str.strip().unique()
     print(f"Total unique variant IDs: {len(unique_ids)}")
     
     # Load or initialize genomic sequence cache
-    cache_file = "data/genomic_cache.json"
+    os.makedirs("data/ncbi_cache", exist_ok=True)
+    cache_file = "data/ncbi_cache/genomic_cache.json"
     if os.path.exists(cache_file):
         with open(cache_file) as f:
             cache = json.load(f)
@@ -268,7 +267,7 @@ def main():
     else:
         cache = {}
         
-    resolved_details_file = "data/resolved_pegrna_genomic_details.json"
+    resolved_details_file = "data/ncbi_cache/resolved_pegrna_genomic_details.json"
     if os.path.exists(resolved_details_file):
         with open(resolved_details_file) as f:
             resolved_details = json.load(f)
@@ -283,7 +282,7 @@ def main():
         # Build FASTA string for BLAST
         fasta_lines = []
         for aid in unresolved_ids:
-            subset = df[df['clean_id'] == aid]
+            subset = df[df['ID'].astype(str).str.strip() == aid]
             row = subset.iloc[0]
             pbs = row['PBS_pegRNA_DNA'].upper()
             rc_pbs = str(Seq(pbs).reverse_complement())
@@ -330,7 +329,7 @@ def main():
         with ThreadPoolExecutor(max_workers=3) as executor:
             tasks = []
             for aid, align_meta in align_map.items():
-                subset = df[df['clean_id'] == aid]
+                subset = df[df['ID'].astype(str).str.strip() == aid]
                 rep_row = subset.iloc[0]
                 chrom = align_meta['chr']
                 start_coord = align_meta['tStart'] - 150
