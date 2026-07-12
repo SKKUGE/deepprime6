@@ -107,14 +107,15 @@ def main():
     pe6b['orig_index'] = pe6b['ID'].astype(int)
     pe6c['orig_index'] = pe6c['ID'].astype(int)
     pemaxdrnaseh['orig_index'] = pemaxdrnaseh['ID'].astype(int)
+    pridict['orig_index'] = pridict['ID'].astype(int)
     
     raw['Score_DP_Base'] = raw.index.map(dp_base.set_index('orig_index')['Prediction'])
     raw['Score_PE6a'] = raw.index.map(pe6a.set_index('orig_index')['Prediction'])
     raw['Score_PE6b'] = raw.index.map(pe6b.set_index('orig_index')['Prediction'])
     raw['Score_PE6c'] = raw.index.map(pe6c.set_index('orig_index')['Prediction'])
     raw['Score_PEmax_dRNaseH'] = raw.index.map(pemaxdrnaseh.set_index('orig_index')['Prediction'])
-    raw['Score_PRIDICT_HEK'] = raw.index.map(pridict.set_index('index')['PRIDICT2_Score_HEK'])
-    raw['Score_PRIDICT_K562'] = raw.index.map(pridict.set_index('index')['PRIDICT2_Score_K562'])
+    raw['Score_PRIDICT_HEK'] = raw.index.map(pridict.set_index('orig_index')['PRIDICT2_Score_HEK'])
+    raw['Score_PRIDICT_K562'] = raw.index.map(pridict.set_index('orig_index')['PRIDICT2_Score_K562'])
     
     # Map preprocessed sequence context columns back to raw dataframe
     parquet_path = os.path.join(output_dir, "preprocessed_pegrna_prediction.parquet")

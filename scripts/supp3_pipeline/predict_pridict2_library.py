@@ -116,17 +116,27 @@ def main():
             score_map = sub_df.set_index('seq_id')['pred_averageedited'] * 100
             pegdataframe[f'PRIDICT2_Score_{cell_type}'] = pegdataframe.index.map(score_map)
             
+        output_chunk = pegdataframe.copy()
+        output_chunk['ID'] = output_chunk['orig_index'].astype(str)
+        output_chunk['variant_id'] = output_chunk['sequence_name']
+        
+        # Reset index to create a sequential 0, 1, 2... index
+        output_chunk = output_chunk.reset_index(drop=True).reset_index(drop=False)
+        
         output_cols = [
-            'orig_index', 'sequence_name', 'PRIDICT2_Score_HEK', 'PRIDICT2_Score_K562'
+            'index', 'ID', 'variant_id', 'PRIDICT2_Score_HEK', 'PRIDICT2_Score_K562'
         ]
-        output_chunk = pegdataframe[output_cols].copy()
-        output_chunk.rename(columns={'orig_index': 'index', 'sequence_name': 'ID'}, inplace=True)
+        output_chunk = output_chunk[output_cols].copy()
         
         output_chunk.to_csv(chunk_path, index=False)
         completed_dfs.append(output_chunk)
         
     print("\nAll chunks processed. Concatenating results...")
     final_df = pd.concat(completed_dfs, axis=0, ignore_index=True)
+    
+    # Re-generate sequential index for concatenated dataframe to be 100% correct
+    final_df['index'] = range(len(final_df))
+    
     output_path = os.path.join(output_dir, "predictions_pridict2.csv")
     final_df.to_csv(output_path, index=False)
     
