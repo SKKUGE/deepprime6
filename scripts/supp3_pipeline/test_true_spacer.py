@@ -13,7 +13,7 @@ def find_true_spacer_and_pam(wt_200, pbs, rc_pbs, approx_nick):
         # 1. Forward strand SpCas9 site: spacer = wt_200[i:i+20], PAM = wt_200[i+20:i+23]
         pam_fwd = wt_200[i+20 : i+23]
         if pam_fwd[1:3] == "GG":
-            nick_fwd = i + 20
+            nick_fwd = i + 17
             offset = abs(nick_fwd - approx_nick)
             if offset < best_offset:
                 best_offset = offset
@@ -24,7 +24,7 @@ def find_true_spacer_and_pam(wt_200, pbs, rc_pbs, approx_nick):
         # 2. Reverse strand SpCas9 site: PAM = wt_200[i:i+3] (CC)
         pam_rev = wt_200[i : i+3]
         if pam_rev[0:2] == "CC":
-            nick_rev = i + 3
+            nick_rev = i + 6
             offset = abs(nick_rev - approx_nick)
             if offset < best_offset:
                 best_offset = offset
@@ -35,6 +35,12 @@ def find_true_spacer_and_pam(wt_200, pbs, rc_pbs, approx_nick):
     if best_offset <= 6:
         return best_spacer, best_pam, best_strand, best_offset
     return None, None, None, best_offset
+
+def clean_id(x):
+    s = str(x).strip()
+    if s.endswith('.0'):
+        s = s[:-2]
+    return s
 
 def main():
     candidates_path = "data/predictions/selected_50_validation_candidates.csv"
@@ -48,7 +54,7 @@ def main():
     failed = 0
     
     for idx, row in cand_df.iterrows():
-        raw_id = str(row['ID'])
+        raw_id = clean_id(row['ID'])
         pbs = str(row['PBS_pegRNA_DNA']).upper()
         rc_pbs = str(Seq(pbs).reverse_complement())
         

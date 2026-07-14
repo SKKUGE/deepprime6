@@ -3,6 +3,12 @@
 # Exit on error
 set -e
 
+# Ensure local imports have precedence (Environment resolution)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$(cd "$SCRIPT_DIR/.." && pwd):$PYTHONPATH"
+export LD_LIBRARY_PATH="/home/work/workdir/DeepPrime6/.conda/lib:$LD_LIBRARY_PATH"
+export PATH="/home/work/workdir/DeepPrime6/.conda/bin:$PATH"
+
 # Parse command line options
 REFRESH_CACHE=false
 while [[ "$#" -gt 0 ]]; do
@@ -34,23 +40,11 @@ echo "Output directory (OUTPUT_DIR): $OUTPUT_DIR"
 
 PYTHON_BIN="/home/work/workdir/DeepPrime6/.conda/bin/python"
 
-# Step 0a: Fetch ClinVar coordinates if mapping cache is missing
-if [ ! -f "$DATA_DIR/ncbi_cache/clinvar_hgvs_mapping.json" ]; then
-    echo "Step 0a: Mapping cache not found. Querying NCBI E-utilities..."
-    $PYTHON_BIN src/utils/fetch_clinvar_hgvs.py
-fi
-
 # Step 0b: Reconstruct target genomic context if cache is missing
 if [ ! -f "$DATA_DIR/ncbi_cache/resolved_pegrna_genomic_details.json" ]; then
     echo "Step 0b: Resolved genomic details cache not found. Reconstructing..."
-    $PYTHON_BIN src/utils/reconstruct_by_blat.py
-    $PYTHON_BIN src/utils/ncbi_blast_reconstruct.py
-    $PYTHON_BIN scripts/supp3_pipeline/resolve_remaining.py
+    $PYTHON_BIN scripts/supp3_pipeline/reconstruct_by_blat.py --data-dir "$DATA_DIR"
 fi
-
-# Always run fix_genomic_cache.py to check coordinate alignment and ensure wide genomic context is populated
-echo "Running fix_genomic_cache.py to check coordinate alignment and populate wide genomic context..."
-$PYTHON_BIN scripts/supp3_pipeline/fix_genomic_cache.py
 
 # Step 1: Preprocess raw ClinVar pegRNA library with pre-inference biological QC
 echo "Step 1: Running parallel target sequence reconstruction and feature preprocessing..."

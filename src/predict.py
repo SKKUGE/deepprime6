@@ -1,5 +1,7 @@
 import rootutils
-
+import os
+print("DEBUG: predict.py __file__ is:", __file__)
+print("DEBUG: predict.py Cwd is:", os.getcwd())
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from typing import Any, Dict, List, Tuple  # noqa: E402

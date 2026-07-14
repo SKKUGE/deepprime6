@@ -18,10 +18,27 @@ def main():
     data_dir = args.data_dir
     output_dir = args.output_dir
 
+def clean_id(x):
+    s = str(x).strip()
+    if s.endswith('.0'):
+        s = s[:-2]
+    return s
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data-dir", default="data", help="Directory for input data")
+    parser.add_argument("--output-dir", default="data/predictions", help="Directory for output data")
+    args = parser.parse_args()
+    data_dir = args.data_dir
+    output_dir = args.output_dir
+
     print(f"Using input data directory: {data_dir}")
     print(f"Using output data directory: {output_dir}")
     print("Loading original pegRNA dataset...")
     df = pd.read_csv(os.path.join(data_dir, "MFE_randompeg_RHA30_0.71M_result.csv"))
+    
+    # Pre-clean the IDs column to avoid float .0 mismatch issues
+    df['clean_id'] = df['ID'].apply(clean_id)
     
     print("Loading resolved genomic details...")
     with open(os.path.join(data_dir, "ncbi_cache", "resolved_pegrna_genomic_details.json")) as f:
@@ -30,7 +47,7 @@ def main():
     print(f"Total resolved unique variant IDs: {len(resolved)}")
     
     # Filter df to only include successfully resolved variants
-    df_filtered = df[df['ID'].astype(str).isin(resolved.keys())].copy()
+    df_filtered = df[df['clean_id'].isin(resolved.keys())].copy()
     print(f"Filtered dataset rows: {len(df_filtered)}")
     
     # Perform pre-inference biological QC and dynamic context reconstruction
@@ -39,7 +56,7 @@ def main():
     t_start = time.time()
     
     for idx, row in df_filtered.iterrows():
-        aid = str(row['ID'])
+        aid = clean_id(row['ID'])
         if aid not in resolved:
             continue
             
@@ -76,7 +93,7 @@ def main():
             for i in range(len(wt_full) - 23):
                 pam = wt_full[i+20 : i+23]
                 if pam[1:3] == 'GG':
-                    nick_cand = i + 20
+                    nick_cand = i + 17
                     offset = abs(nick_cand - nick_fwd)
                     if offset < best_offset:
                         best_offset = offset
@@ -90,7 +107,7 @@ def main():
             for i in range(len(rc_wt_full) - 23):
                 pam = rc_wt_full[i+20 : i+23]
                 if pam[1:3] == 'GG':
-                    nick_cand = i + 20
+                    nick_cand = i + 17
                     offset = abs(nick_cand - nick_rev)
                     if offset < best_offset:
                         best_offset = offset

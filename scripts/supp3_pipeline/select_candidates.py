@@ -25,7 +25,7 @@ def find_true_spacer_and_pam(wt_200, pbs):
         # 1. Forward strand SpCas9 site: spacer = wt_200[i:i+20], PAM = wt_200[i+20:i+23]
         pam_fwd = wt_200[i+20 : i+23]
         if pam_fwd[1:3] == "GG":
-            nick_fwd = i + 20
+            nick_fwd = i + 17
             offset = abs(nick_fwd - approx_nick)
             if offset < best_offset:
                 best_offset = offset
@@ -36,7 +36,7 @@ def find_true_spacer_and_pam(wt_200, pbs):
         # 2. Reverse strand SpCas9 site: PAM = wt_200[i:i+3] (CC)
         pam_rev = wt_200[i : i+3]
         if pam_rev[0:2] == "CC":
-            nick_rev = i + 3
+            nick_rev = i + 6
             offset = abs(nick_rev - approx_nick)
             if offset < best_offset:
                 best_offset = offset
@@ -67,6 +67,12 @@ def is_valid_design(row, resolved):
     return False
 
 
+def clean_id(x):
+    s = str(x).strip()
+    if s.endswith('.0'):
+        s = s[:-2]
+    return s
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="data", help="Directory for input data")
@@ -74,7 +80,7 @@ def main():
     args = parser.parse_args()
     data_dir = args.data_dir
     output_dir = args.output_dir
-
+    
     # Load resolved genomic details cache if it exists
     resolved_path = os.path.join(data_dir, "ncbi_cache", "resolved_pegrna_genomic_details.json")
     resolved = {}
@@ -90,6 +96,7 @@ def main():
     print(f"Using output data directory: {output_dir}")
     print("Loading predictions and raw dataset...")
     raw = pd.read_csv(os.path.join(data_dir, "MFE_randompeg_RHA30_0.71M_result.csv"))
+    raw['clean_id'] = raw['ID'].apply(clean_id)
     
     # Load all prediction files from output_dir
     dp_base = pd.read_csv(os.path.join(output_dir, "pegrna_predictions.csv"))
@@ -132,10 +139,10 @@ def main():
         raw['Edit_pos'] = raw.index.map(prep_df.set_index('orig_index')['Edit_pos'])
     
     # Map resolved genomic context coordinates and gene info
-    raw['chr'] = raw['ID'].astype(str).map(lambda x: resolved.get(x, {}).get('chr', 'unknown'))
-    raw['strand'] = raw['ID'].astype(str).map(lambda x: resolved.get(x, {}).get('strand', 'unknown'))
-    raw['transcript'] = raw['ID'].astype(str).map(lambda x: resolved.get(x, {}).get('transcript', 'unknown'))
-    raw['gene'] = raw['ID'].astype(str).map(lambda x: resolved.get(x, {}).get('gene', 'unknown'))
+    raw['chr'] = raw['clean_id'].map(lambda x: resolved.get(x, {}).get('chr', 'unknown'))
+    raw['strand'] = raw['clean_id'].map(lambda x: resolved.get(x, {}).get('strand', 'unknown'))
+    raw['transcript'] = raw['clean_id'].map(lambda x: resolved.get(x, {}).get('transcript', 'unknown'))
+    raw['gene'] = raw['clean_id'].map(lambda x: resolved.get(x, {}).get('gene', 'unknown'))
 
     # Keep only successfully scored pegRNAs
     df = raw.dropna(subset=['Score_DP_Base', 'Score_PE6a', 'Score_PRIDICT_HEK']).copy()
