@@ -117,14 +117,14 @@ def main():
             pegdataframe[f'PRIDICT2_Score_{cell_type}'] = pegdataframe.index.map(score_map)
             
         output_chunk = pegdataframe.copy()
-        output_chunk['ID'] = output_chunk['orig_index'].astype(str)
+        output_chunk['orig_index'] = output_chunk['orig_index'].astype(str)
         output_chunk['variant_id'] = output_chunk['sequence_name']
         
         # Reset index to create a sequential 0, 1, 2... index
         output_chunk = output_chunk.reset_index(drop=True).reset_index(drop=False)
         
         output_cols = [
-            'index', 'ID', 'variant_id', 'PRIDICT2_Score_HEK', 'PRIDICT2_Score_K562'
+            'index', 'orig_index', 'variant_id', 'PRIDICT2_Score_HEK', 'PRIDICT2_Score_K562'
         ]
         output_chunk = output_chunk[output_cols].copy()
         

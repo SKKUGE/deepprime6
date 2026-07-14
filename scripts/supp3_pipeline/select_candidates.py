@@ -108,13 +108,13 @@ def main():
     
     # Map predictions back to raw using the original indices
     print("Mapping model scores to pegRNAs...")
-    # Convert 'ID' column (which holds the original raw index as a string) to integer index
-    dp_base['orig_index'] = dp_base['ID'].astype(int)
-    pe6a['orig_index'] = pe6a['ID'].astype(int)
-    pe6b['orig_index'] = pe6b['ID'].astype(int)
-    pe6c['orig_index'] = pe6c['ID'].astype(int)
-    pemaxdrnaseh['orig_index'] = pemaxdrnaseh['ID'].astype(int)
-    pridict['orig_index'] = pridict['ID'].astype(int)
+    # Convert 'orig_index' column to integer index
+    dp_base['orig_index'] = dp_base['orig_index'].astype(int)
+    pe6a['orig_index'] = pe6a['orig_index'].astype(int)
+    pe6b['orig_index'] = pe6b['orig_index'].astype(int)
+    pe6c['orig_index'] = pe6c['orig_index'].astype(int)
+    pemaxdrnaseh['orig_index'] = pemaxdrnaseh['orig_index'].astype(int)
+    pridict['orig_index'] = pridict['orig_index'].astype(int)
     
     raw['Score_DP_Base'] = raw.index.map(dp_base.set_index('orig_index')['Prediction'])
     raw['Score_PE6a'] = raw.index.map(pe6a.set_index('orig_index')['Prediction'])
