@@ -1,0 +1,11 @@
+{
+    "workbench.editorAssociations": {
+        "*.ipynb": "jupyter.notebook.ipynb",
+        "file:/**/*.parquet": "jupyter-data-wrangler",
+        "git-rebase-todo": "gitlens.rebase",
+        "*.parquet": "cweijan.parquetViewer",
+        "*.csv": "duckdb.dataFileViewer",
+        "*.tsv": "duckdb.dataFileViewer",
+        "*.xlsx": "duckdb.dataFileViewer"
+    }
+}

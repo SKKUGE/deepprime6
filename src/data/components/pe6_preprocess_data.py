@@ -178,6 +178,9 @@ def calculate_guide_features(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: The modified DataFrame with additional columns "GuideStart", "GuideEnd", and "Nicking".
     """
+    if "Nicking" in df.columns:
+        return df
+
     context_col = "OligoSequence_fixed_length" if "OligoSequence_fixed_length" in df.columns else "WideTargetSequence"
     
     def select_best_index(main_seq, guide_seq, indices):
@@ -253,6 +256,12 @@ def determine_seqs(
         ValueError: If the alteration type is invalid.
     """
     # pam_nick: int,    # To be inferred from the data
+
+    if pd.isna(nick_index):
+        raise ValueError(f"Nicking is NaN! wt_seq={wt_seq[:20]}... pbs_seq={pbs_seq} rt_seq={rt_seq}")
+    
+    # Ensure nick_index is an integer
+    nick_index = int(nick_index)
 
     tm1_pbs = transcribe(pbs_seq)  # genet: transcribe(pbs) → T→U conversion
     tm2_rtt_ctarget = wt_seq[
