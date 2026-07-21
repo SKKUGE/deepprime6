@@ -32,6 +32,16 @@ def main():
     else:
         df['Percentile_PRIDICT2'] = 0.5
         
+    # Calculate percentiles for individual DP6 models (Option C)
+    dp6_models = ['pe6a', 'pe6b', 'pe6c', 'pemaxdrnaseh']
+    for m in dp6_models:
+        col = f'pred_dp6_{m}'
+        if col in df.columns:
+            df[f'Percentile_DP6_{m.upper()}'] = df[col].rank(pct=True, ascending=True)
+            
+    if 'pred_dp6' in df.columns:
+        df['Percentile_DP6_AVG'] = df['pred_dp6'].rank(pct=True, ascending=True)
+        
     print("Setting PRIDICT2 as Representative Score, DP Base as Auxiliary...")
     df['Representative_Percentile'] = df['Percentile_PRIDICT2']
     

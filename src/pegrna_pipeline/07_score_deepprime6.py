@@ -46,7 +46,7 @@ def main():
     with open(args.model_versions, "r") as f:
         mv = yaml.safe_load(f)
         
-    dp6_ckpt_path = mv['models']['deepprime6']['checkpoint']
+    dp6_checkpoints = mv['models']['deepprime6'].get('checkpoints', {})
     
     # Add dummy target labels since PE6DeepPrimeDataset checks for them
     pe_types = [
@@ -59,36 +59,57 @@ def main():
     feat_df['ID'] = df['run_id'].values
         
     temp_input = os.path.join(args.output_dir, "temp_dp6_input.parquet")
-    temp_output = os.path.join(args.output_dir, "temp_dp6_scores.csv")
     feat_df.to_parquet(temp_input, index=False)
     
     print("Running DeepPrime6 predictions via src/predict.py...")
     import subprocess
-    cmd = [
-        "python", "src/predict.py",
-        "trainer=gpu",
-        f"data.csv_path={temp_input}",
-        f"ckpt_path={dp6_ckpt_path}",
-        "data.datafilter.PE_types=[\"PE6b(+PEmaxCas9)\"]",
-        f"model.prediction_save_path={temp_output}",
-        "data.skip_preprocessing=True",
-        "data.batch_size=8192"
-    ]
-    subprocess.run(cmd, check=True)
     
-    # Load the output predictions
-    print("Loading DeepPrime6 predictions...")
-    preds = pd.read_csv(temp_output)
+    model_preds = {}
     
-    if 'Prediction' in preds.columns:
-        df['pred_dp6'] = preds['Prediction'].values
-    else:
-        raise ValueError("Prediction column not found in predict.py output")
+    # PE type mapping corresponding to each model
+    pe_type_mapping = {
+        "PE6a": "PE6a(+PEmaxCas9)",
+        "PE6b": "PE6b(+PEmaxCas9)",
+        "PE6c": "PE6c(+PEmaxCas9)",
+        "PEmaxdRNaseH": "PEmaxdRNaseH"
+    }
+    
+    for model_name, ckpt_path in dp6_checkpoints.items():
+        print(f"Scoring {model_name}...")
+        temp_output = os.path.join(args.output_dir, f"temp_dp6_scores_{model_name}.csv")
+        target_pe_type = pe_type_mapping.get(model_name, "PE6b(+PEmaxCas9)")
+        
+        cmd = [
+            "python", "src/predict.py",
+            "trainer=gpu",
+            f"data.csv_path={temp_input}",
+            f"ckpt_path={ckpt_path}",
+            f"data.datafilter.PE_types=[\"{target_pe_type}\"]",
+            f"model.prediction_save_path={temp_output}",
+            "data.skip_preprocessing=True",
+            "data.batch_size=8192"
+        ]
+        subprocess.run(cmd, check=True)
+        
+        preds = pd.read_csv(temp_output)
+        if 'Prediction' in preds.columns:
+            df[f'pred_dp6_{model_name.lower()}'] = preds['Prediction'].values
+            model_preds[model_name] = preds['Prediction'].values
+        else:
+            raise ValueError(f"Prediction column not found in predict.py output for {model_name}")
+            
+        try:
+            os.remove(temp_output)
+        except:
+            pass
+            
+    # Calculate ensemble average
+    all_preds = np.array(list(model_preds.values()))
+    df['pred_dp6'] = np.mean(all_preds, axis=0)
         
     # Cleanup temps
     try:
         os.remove(temp_input)
-        os.remove(temp_output)
     except:
         pass
     

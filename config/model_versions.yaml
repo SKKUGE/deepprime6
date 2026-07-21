@@ -4,10 +4,13 @@ models:
     checkpoint: "src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428"
   deepprime6:
     version: "v6.0"
-    checkpoint: "src/models/weights/DeepPrime6-weights/pe6b_mainft.ckpt"
-    representative_checkpoint: "PE6b"
-    aggregation: "single_checkpoint"
-    wet_editor: "PE6b" # Setting this to PE6b to match
+    checkpoints:
+      PE6a: "src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt"
+      PE6b: "src/models/weights/DeepPrime6-weights/pe6b_mainft.ckpt"
+      PE6c: "src/models/weights/DeepPrime6-weights/pe6c_mainft.ckpt"
+      PEmaxdRNaseH: "src/models/weights/DeepPrime6-weights/pemaxdrnaseh_mainft.ckpt"
+    representative_checkpoint: "ensemble_average"
+    aggregation: "ensemble"
     preserve_individual_scores: true
   pridict2:
     version: "v2.0"

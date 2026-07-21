@@ -20,7 +20,7 @@ echo " Phase 10: Select Final Candidates"
 echo "------------------------------------------"
 $CONDA_ENV src/pegrna_pipeline/10_select_candidates.py \
     --input data/pilot_output/pegrna_designs_scored_normalized.parquet \
-    --config src/pipeline_config.yaml \
+    --config config/pipeline_config.yaml \
     --output-dir data/pilot_output/
 
 echo "------------------------------------------"

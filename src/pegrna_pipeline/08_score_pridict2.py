@@ -63,7 +63,7 @@ def main():
     
     print("Running PRIDICT2.0 feature parsing and inference in chunks...")
     num_samples = len(df)
-    pr_chunk_size = 50000
+    pr_chunk_size = 2000
     preds_pridict2_hek = np.zeros(num_samples)
     
     for chunk_start in range(0, num_samples, pr_chunk_size):
