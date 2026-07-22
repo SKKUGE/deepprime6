@@ -14,7 +14,7 @@ design_parameters:
   pilot_mutations: 100
 
 target_panel:
-  mutation_count: 1000
+  mutation_count: 2000
   random_seed: 42
 
 scoring:

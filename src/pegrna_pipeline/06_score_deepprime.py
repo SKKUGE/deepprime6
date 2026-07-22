@@ -157,7 +157,8 @@ def main():
         "ckpt_path=null",
         f"model.prediction_save_path={temp_output}",
         "data.skip_preprocessing=True",
-        "data.batch_size=8192"
+        "data.batch_size=8192",
+        "data.dataloader.num_workers=0"
     ]
     subprocess.run(cmd, check=True)
     

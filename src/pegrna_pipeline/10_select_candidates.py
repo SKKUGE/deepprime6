@@ -88,6 +88,9 @@ def main():
     # Combine primary and secondary as our candidate pool
     pool = pd.concat([primary_selected, secondary_selected])
     
+    # Remove duplicate mutations (keep first, which is the primary/higher score one)
+    pool = pool.drop_duplicates(subset=['mutation_key'], keep='first')
+    
     # Subsample to exact quotas
     final_dfs = []
     
@@ -95,25 +98,20 @@ def main():
     mo_pool = pool[pool['Efficacy_Category'] == 'Modest']
     ie_pool = pool[pool['Efficacy_Category'] == 'Inefficient']
     
-    # Prioritize 'Disagreement' within each pool, then randomly sample if ties
-    he_pool = he_pool.sort_values('Disagreement_Score', ascending=False)
-    mo_pool = mo_pool.sort_values('Disagreement_Score', ascending=False)
-    ie_pool = ie_pool.sort_values('Disagreement_Score', ascending=False)
-    
     print(f"Sampling exact quota: HE={quota_he}, MO={quota_mo}, IE={quota_ie}")
     
     if len(he_pool) >= quota_he:
-        final_dfs.append(he_pool.head(quota_he))
+        final_dfs.append(he_pool.sample(n=quota_he, random_state=42))
     else:
         final_dfs.append(he_pool)
         
     if len(mo_pool) >= quota_mo:
-        final_dfs.append(mo_pool.head(quota_mo))
+        final_dfs.append(mo_pool.sample(n=quota_mo, random_state=42))
     else:
         final_dfs.append(mo_pool)
         
     if len(ie_pool) >= quota_ie:
-        final_dfs.append(ie_pool.head(quota_ie))
+        final_dfs.append(ie_pool.sample(n=quota_ie, random_state=42))
     else:
         final_dfs.append(ie_pool)
         
