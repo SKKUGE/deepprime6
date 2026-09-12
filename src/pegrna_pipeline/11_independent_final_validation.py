@@ -48,7 +48,7 @@ def main():
         fwd_score = aligner.score(wt.upper(), target_seq.upper())
         rc_score = aligner.score(wt.upper(), reverse_complement(target_seq).upper())
         
-        has_target = (fwd_score >= len(target_seq) - 1) or (rc_score >= len(target_seq) - 1)
+        has_target = target_seq.upper() in wt.upper() or reverse_complement(target_seq).upper() in wt.upper()
         
         # Validation 2: pegRNA Extension (RTT + PBS) properly matches the edited target flap
         # The pegRNA extension is RTT + PBS.
