@@ -50,7 +50,7 @@ def main():
         
     # 3. Export Source Data to CSV
     csv_path = os.path.join(args.output_dir, "plot_source_data.csv")
-    cols_to_save = ['mutation_key']
+    cols_to_save = ['run_id', 'mutation_key', 'design_id', 'spacer', 'PBS_sequence', 'RTT_sequence']
     for col in ['pred_dp_base', 'pred_pridict2', 'Percentile_DP_Base', 'Percentile_PRIDICT2']:
         if col in df.columns:
             cols_to_save.append(col)
