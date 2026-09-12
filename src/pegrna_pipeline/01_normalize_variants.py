@@ -12,25 +12,22 @@ def parse_args():
     return parser.parse_args()
 
 def parse_ref_alt(wt, ed):
-    ref = ""
-    alt = ""
-    edit_pos = -1
-    for i in range(min(len(wt), len(ed))):
-        if wt[i] != ed[i]:
-            edit_pos = i
-            break
-            
-    if edit_pos != -1:
-        ref = wt[edit_pos]
-        alt = ed[edit_pos]
-        if len(wt) > len(ed):
-            diff = len(wt) - len(ed)
-            ref = wt[edit_pos:edit_pos+diff+1]
-            alt = ed[edit_pos]
-        elif len(ed) > len(wt):
-            diff = len(ed) - len(wt)
-            ref = wt[edit_pos]
-            alt = ed[edit_pos:edit_pos+diff+1]
+    if wt == ed:
+        return "", ""
+
+    prefix_len = 0
+    max_prefix = min(len(wt), len(ed))
+    while prefix_len < max_prefix and wt[prefix_len] == ed[prefix_len]:
+        prefix_len += 1
+
+    wt_end = len(wt)
+    ed_end = len(ed)
+    while wt_end > prefix_len and ed_end > prefix_len and wt[wt_end - 1] == ed[ed_end - 1]:
+        wt_end -= 1
+        ed_end -= 1
+
+    ref = wt[prefix_len:wt_end]
+    alt = ed[prefix_len:ed_end]
     return ref, alt
 
 def get_edit_type_and_length(ref, alt):

@@ -111,8 +111,12 @@ def main():
                 for v_idx, score in zip(valid_indices, agg_hek['pred_averageedited'].values * 100):
                     preds_pridict2_hek[chunk_start + v_idx] = score
             else:
-                # Fallback if somehow length mismatches, though it shouldn't
-                pass
+                affected_ids = chunk_df.iloc[valid_indices]['REF_ID'].tolist()
+                raise RuntimeError(
+                    f"PRIDICT2 HEK aggregation length mismatch in chunk [{chunk_start}:{chunk_end}] "
+                    f"(expected {len(valid_indices)}, got {len(agg_hek)}). "
+                    f"Affected design IDs: {affected_ids[:20]}"
+                )
         
         print(f"Processed {chunk_end}/{num_samples} rows for PRIDICT2.0...")
         
