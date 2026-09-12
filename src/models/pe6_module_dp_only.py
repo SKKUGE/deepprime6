@@ -530,7 +530,7 @@ class PE6DeepPrimeModule(LightningModule):
         # logging test prediction and target values
         result_table = pd.DataFrame(
             list(zip(self.predict_targets, self.predict_preds, self.predict_annot)),
-            columns=["Target", "Prediction", "ID"],
+            columns=["Target", "Prediction", "orig_index"],
         )
 
         result_table["PE_type"] = [

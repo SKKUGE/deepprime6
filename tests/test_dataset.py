@@ -135,8 +135,8 @@ class TestPE6DeepPrimeDataset:
         dataset = _make_dataset()
         item, _ = dataset[0]
         (g, _), _ = item
-        # g should be (4, SEQ_LEN, 2) after permute
-        assert g.shape == (4, SEQ_LEN, 2)
+        # g should be (4, 2, SEQ_LEN) after permute
+        assert g.shape == (4, 2, SEQ_LEN)
 
     def test_genetic_feature_range(self):
         dataset = _make_dataset()
@@ -202,5 +202,5 @@ class TestCustomCollateFn:
         items = [dataset[i] for i in range(n_items)]
         inputs, _ = custom_collate_fn(items)
         (g_batch, b_batch), label_batch = inputs
-        assert g_batch.shape == (n_items, 4, SEQ_LEN, 2)
+        assert g_batch.shape == (n_items, 4, 2, SEQ_LEN)
         assert b_batch.shape == (n_items, len(BIOFEATURE_COLS))

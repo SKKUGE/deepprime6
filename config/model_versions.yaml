@@ -1,0 +1,30 @@
+models:
+  deepprime:
+    version: "v1.0"
+    checkpoint: "src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428"
+  deepprime6:
+    version: "v6.0"
+    checkpoints:
+      PE6a: "src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt"
+      PE6b: "src/models/weights/DeepPrime6-weights/pe6b_mainft.ckpt"
+      PE6c: "src/models/weights/DeepPrime6-weights/pe6c_mainft.ckpt"
+      PEmaxdRNaseH: "src/models/weights/DeepPrime6-weights/pemaxdrnaseh_mainft.ckpt"
+    representative_checkpoint: "ensemble_average"
+    aggregation: "ensemble"
+    preserve_individual_scores: true
+  pridict2:
+    version: "v2.0"
+    checkpoint: "checkpoints/pridict2.pt"
+    cell_models:
+      - "HEK293T"
+      - "K562"
+    representative_score: "HEK293T"
+    required_context_length: 100 # Needs verification with official PRIDICT2 code
+    preserve_individual_scores: true
+
+environment:
+  python: "3.9"
+  cuda: "11.7"
+  packages:
+    torch: "2.0.1"
+    pandas: "2.0.3"

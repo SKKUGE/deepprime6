@@ -1,0 +1,37 @@
+pipeline:
+  name: "clinvar_pegrna_pipeline"
+  version: "1.0.0"
+
+design_parameters:
+  pam: "NGG"
+  pbs_length_min: 10
+  pbs_length_max: 15
+  rtt_length_min: 10
+  rtt_length_max: 30
+  enumerate_all_valid_combinations: true
+  max_designs_per_mutation: null
+  cap_policy: "stratified_after_qc"
+  pilot_mutations: 100
+
+target_panel:
+  mutation_count: 2000
+  random_seed: 42
+
+scoring:
+  terciles:
+    inefficient_max: 0.333
+    modest_max: 0.667
+  selection_quota:
+    inefficient: 15
+    modest: 20
+    highly_efficient: 15
+    reserve: 15
+  cell_lines:
+    - "HEK293T"
+    - "HCT116"
+    - "NIH3T3"
+    - "MMR_proficient_cell_line_4" # TBD
+
+data_sources:
+  reference_fasta: "data/hg38.fa" # Update to actual hg38 path
+  clinvar_fix: "data/clinvar_fix.csv" # Update to actual clinvar_fix path
