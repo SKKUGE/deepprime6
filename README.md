@@ -1,5 +1,8 @@
 # DeepPrime6
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22719979.svg)](https://doi.org/10.5281/zenodo.22719979)
+
 Official repository for DeepPrime6: Deep learning-based prediction of prime editing efficiencies and transfer learning pipelines.
+
 
 ## Environment
 
@@ -121,6 +124,9 @@ The following table lists the model weights reported in the paper. You can use t
 
 [1]: https://drive.google.com/file/d/1L9IRg5CMOv_NA2mFYY1aARYEBT-BTP43/view?usp=sharing
 
+Or you can find the exact same checkpoints on the [release](https://github.com/SKKUGE/deepprime6/releases/tag/v1.1) section.
+
+
 ## Customizing Configurations
 
 This project uses [Hydra](https://hydra.cc/) for configuration management.
@@ -221,3 +227,10 @@ Copy `.env.example` to `.env` and fill in your credentials:
 
 - No secrets are committed; all credentials are loaded from environment variables.
 - Checkpoints and Hydra run outputs are written under `logs/` (git-ignored).
+
+## Citation
+
+```
+Ju-young Shin. (2026). SKKUGE/deepprime6: v1.1-submission (Version v1.1) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.22719979
+```
+
