@@ -12,8 +12,8 @@ validate_design = validate_designs.validate_design
 def test_bio1_spacer_mismatch():
     # Construct a valid design, then mutate spacer
     row = {
-        'WT_context': 'A'*100 + 'C' + 'A'*99,
-        'Edited_context': 'A'*100 + 'G' + 'A'*99,
+        'WT_context': 'A'*100 + 'CGG' + 'A'*97,
+        'Edited_context': 'A'*100 + 'GGG' + 'A'*97,
         'spacer': 'A'*20, # Suppose valid spacer
         'PAM': 'CGG',
         'nick_position': 97,

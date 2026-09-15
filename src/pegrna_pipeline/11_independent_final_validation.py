@@ -40,6 +40,7 @@ def main():
         rtt = row['RTT_sequence']
         wt = row['WT_context']
         ed = row['Edited_context']
+        strand = row['pegRNA_strand']
         
         # Validation 1: Spacer + PAM in WT
         target_seq = spacer + pam
@@ -47,7 +48,7 @@ def main():
         fwd_score = aligner.score(wt.upper(), target_seq.upper())
         rc_score = aligner.score(wt.upper(), reverse_complement(target_seq).upper())
         
-        has_target = (fwd_score >= len(target_seq) - 1) or (rc_score >= len(target_seq) - 1)
+        has_target = target_seq.upper() in wt.upper() or reverse_complement(target_seq).upper() in wt.upper()
         
         # Validation 2: pegRNA Extension (RTT + PBS) properly matches the edited target flap
         # The pegRNA extension is RTT + PBS.
@@ -56,13 +57,9 @@ def main():
         # So RC(RTT + PBS) = RC(PBS) + RC(RTT) = Target Flap + Edited Flap.
         # This sequence should perfectly match a subregion of the Edited Context!
         
-        rc_extension = reverse_complement(rtt + pbs).upper()
-        
-        fwd_ext_score = aligner.score(ed.upper(), rc_extension)
-        rc_ext_score = aligner.score(ed.upper(), reverse_complement(rc_extension))
-        
-        # Score must be very close to exact match
-        has_ext = (fwd_ext_score >= len(rc_extension) - 2) or (rc_ext_score >= len(rc_extension) - 2)
+        target_ed = ed.upper() if strand == '+' else reverse_complement(ed).upper()
+        expected_extension = reverse_complement(rtt + pbs).upper()
+        has_ext = expected_extension in target_ed
         
         if has_target and has_ext:
             validated.append(row)
