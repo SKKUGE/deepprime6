@@ -65,6 +65,8 @@ def preprocess_data(
         source["PBS_length"] = source["PBS"].apply(len)
     if "RT_length" not in source.columns and "RTT" in source.columns:
         source["RT_length"] = source["RTT"].apply(len)
+    if "leading G" not in source.columns:
+        source["leading G"] = ""
 
     
 
@@ -214,7 +216,9 @@ def calculate_guide_features(df: pd.DataFrame) -> pd.DataFrame:
     end_idx = query.str[1]
 
     df = df.assign(GuideStart=start_idx, GuideEnd=end_idx, ContextSeqUsed=context_col)
-    df["Nicking"] = df["GuideEnd"] - 3
+    # Cas9 cuts 3 bp upstream of PAM (between pos -4 and -3 relative to PAM).
+    # Since GuideEnd is pos -1, the first base 3' of the nick (0-based cut index) is GuideEnd - 2.
+    df["Nicking"] = df["GuideEnd"] - 2
     return df
 
 
@@ -260,8 +264,9 @@ def determine_seqs(
     if pd.isna(nick_index):
         raise ValueError(f"Nicking is NaN! wt_seq={wt_seq[:20]}... pbs_seq={pbs_seq} rt_seq={rt_seq}")
     
-    # Ensure nick_index is an integer
+    # Ensure nick_index and alt_len are integers
     nick_index = int(nick_index)
+    alt_len = int(alt_len)
 
     tm1_pbs = transcribe(pbs_seq)  # genet: transcribe(pbs) → T→U conversion
     tm2_rtt_ctarget = wt_seq[
@@ -530,8 +535,8 @@ def make_output_df(df: pd.DataFrame) -> pd.DataFrame:
             len(sSeq30) == 30
         ), f"Length of sSeq30 (30-nt window for SpCas9) is not 30: {len(sSeq30)}"
 
-        s5Bufferlen = UPSTREAM_LENGTH_TO_NICK - PBSlen
-        s3Bufferlen = DOWNSTREAM_IDX_TO_NICK - RTlen
+        s5Bufferlen = UPSTREAM_LENGTH_TO_NICK - int(PBSlen)
+        s3Bufferlen = DOWNSTREAM_IDX_TO_NICK - int(RTlen)
         sEDSeq74 = "x" * s5Bufferlen + sPBS_RTSeq + "x" * s3Bufferlen
         assert len(sEDSeq74) == 74, f"Length of sEDSeq74 is not 74: {len(sEDSeq74)}"
 

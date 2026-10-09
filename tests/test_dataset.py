@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 import torch
 
 from src.data.components.data_model.pe6_dprime_dataset import PE6DeepPrimeDataset
@@ -204,3 +203,40 @@ class TestCustomCollateFn:
         (g_batch, b_batch), label_batch = inputs
         assert g_batch.shape == (n_items, 4, 2, SEQ_LEN)
         assert b_batch.shape == (n_items, len(BIOFEATURE_COLS))
+
+
+# ---------------------------------------------------------------------------
+# Coordinate Alignment & PAM Positioning Verification
+# ---------------------------------------------------------------------------
+
+
+class TestGuideCoordinatesAndAlignment:
+    def test_nicking_and_pam_alignment(self):
+        """Verifies that Cas9 nicking is placed 3 bp upstream of PAM and PAM is at [24:27]."""
+        from src.data.components.pe6_preprocess_data import calculate_guide_features, preprocess_data
+        # 4bp flank + 20bp spacer + PAM (TGG) + 50bp downstream = 77bp
+        flank5 = "ACGT"
+        spacer = "GCTGCTGGTGGTCTACCCTG"  # 20 nt
+        pam = "TGG"
+        downstream = "A" * 50
+        wt_seq = flank5 + spacer + pam + downstream
+
+        df = pd.DataFrame([{
+            "REF_ID": "TEST_1",
+            "WideTargetSequence": wt_seq,
+            "Guide": spacer[1:],  # 19 nt guide
+            "PBS": "CCCTTGGACC",
+            "RTT": "CAGGAGTCGGACAGATCCCC",
+            "Edit_type": "sub",
+            "Edit length": 1,
+            "Edit position": 1,
+        }])
+        df_calc = calculate_guide_features(df.copy())
+        assert df_calc["Nicking"].iloc[0] == 21  # 0-based cut index
+        
+        out = preprocess_data(data=df.copy())
+        # DeepSpCas9 30-mer PAM must be at [24:27]
+        assert out["deepspcas9_guide_30"].iloc[0][24:27] == "TGG"
+        # 74-mer Target PAM must be at [24:27]
+        assert out["Target"].iloc[0][24:27] == "TGG"
+

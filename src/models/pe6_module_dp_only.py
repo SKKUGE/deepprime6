@@ -91,9 +91,10 @@ class PE6DeepPrimeModule(LightningModule):
             
             for m_file in m_files:
                 model = feature_extractor()
-                genet_sd = torch.load(m_file, weights_only=True)
+                genet_sd = torch.load(m_file, map_location="cpu", weights_only=True)
                 remapped_sd = self._remap_genet_keys(genet_sd, model)
-                model.load_state_dict(remapped_sd, strict=False)
+                load_result = model.load_state_dict(remapped_sd, strict=False)
+                self._verify_baseline_load(load_result, model, m_file)
                 models.append(model)
         else:
             num_ensemble = self.hparams.model_weights.get("num_ensemble", 20)
@@ -161,20 +162,21 @@ class PE6DeepPrimeModule(LightningModule):
         model_name = model.__class__.__name__
         our_keys = set(model.state_dict().keys())
         
-        # Determine if the current model HAS BNs in 'd' module to decide on remapping
-        # This makes it robust even if class names change
+        # Only BatchNorm layers *inside `d`* distinguish the fine-tuning architecture
+        # (GeneInteractionModelOriginalImplementation) from the original DeepPrime architecture
+        # (GeneInteractionModelVanilla). The original head also has a BatchNorm (head.0) and a Linear
+        # (head.2), identical to the Genet weight files, so it must not trigger the remapping.
         has_bn_in_d = any("d.1.weight" in k or "d.1.running_mean" in k for k in our_keys)
-        has_bn_in_head = any("head.0.weight" in k or "head.0.running_mean" in k for k in our_keys)
 
-        if not has_bn_in_d and not has_bn_in_head:
-            # Matches Vanilla / Original DeepPrime structure
+        if not has_bn_in_d:
+            # Matches Vanilla / original DeepPrime structure (identical key layout to the Genet weights)
             remapped = {k: v for k, v in genet_sd.items() if k in our_keys}
             skipped = [k for k in genet_sd.keys() if k not in our_keys]
             if skipped:
-                log.info(f"  [remap] No BNs detected in model ({model_name}). Identity mapping used. Skipped {len(skipped)} keys from Genet SD.")
+                log.warning(f"  [remap] Identity mapping for {model_name}. Skipped {len(skipped)} Genet keys not in model: {skipped}")
             return remapped
 
-        # Remapping for models WITH BNs (like our current OriginalImplementation)
+        # Remapping for models WITH BNs in `d` (like our current OriginalImplementation)
         KEY_MAP = {
             "d.3.weight": "d.4.weight",
             "d.6.weight": "d.8.weight",
@@ -195,6 +197,29 @@ class PE6DeepPrimeModule(LightningModule):
         if skipped:
             log.info(f"  [remap] BNs detected in model ({model_name}). Applied remapping. Skipped {len(skipped)} keys.")
         return remapped
+
+    @staticmethod
+    def _verify_baseline_load(load_result, model, source: str) -> None:
+        """Fail loudly if baseline (Genet) weights did not fill every non-BatchNorm parameter.
+
+        Missing BatchNorm entries are expected for architectures that add BN layers on top of the original
+        DeepPrime (they stay at their identity initialization); anything else would silently leave random
+        weights in the model.
+        """
+        bn_prefixes = {
+            name for name, mod in model.named_modules() if isinstance(mod, nn.modules.batchnorm._BatchNorm)
+        }
+        missing_non_bn = [k for k in load_result.missing_keys if k.rsplit(".", 1)[0] not in bn_prefixes]
+        if missing_non_bn or load_result.unexpected_keys:
+            raise RuntimeError(
+                f"Baseline weights {source} do not match {model.__class__.__name__}: "
+                f"missing non-BatchNorm keys={missing_non_bn}, unexpected keys={load_result.unexpected_keys}"
+            )
+        if load_result.missing_keys:
+            log.info(
+                f"  [baseline] {model.__class__.__name__}: {len(load_result.missing_keys)} BatchNorm entries "
+                f"not in {os.path.basename(source)} stay at identity initialization."
+            )
 
     def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True):
         """Override to handle remapping from legacy checkpoints.

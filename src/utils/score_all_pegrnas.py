@@ -1,7 +1,10 @@
+# randompeg scoring script
+
 import os
 import sys
 import time
 import glob
+import logging
 import pandas as pd
 import numpy as np
 import torch
@@ -9,16 +12,23 @@ import multiprocessing
 from scipy.stats import spearmanr
 
 # Set project root path
-sys.path.append("/home/work/workdir/deepprime6-genomebiol-revision")
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 from Bio.Seq import Seq, reverse_complement, transcribe
 from Bio.SeqUtils import MeltingTemp as mt
 from RNA import fold_compound
 
 # Set up PRIDICT2 path
-pridict2_dir = os.path.abspath("PRIDICT2")
-sys.path.append(pridict2_dir)
+pridict2_dir = os.path.join(PROJECT_ROOT, "PRIDICT2")
+if pridict2_dir not in sys.path:
+    sys.path.insert(0, pridict2_dir)
 from src.models.pe6_module_dp_only import PE6DeepPrimeModule
+from src.models.components.dprime import GeneInteractionModelVanilla
 from src.utils.predict_pridict2 import load_pridict_model, deeppridict, compute_average_predictions, extract_single_pegRNA_features
+
+logger = logging.getLogger("score_all_pegrnas")
+FALLBACK_LOG_PATH = "logs/score_all_pegrnas_fallbacks.log"  # To log any unintentional cases
 
 # Feature names needed for DeepPrime
 FEATURE_COLS = [
@@ -148,7 +158,114 @@ def run_deep_spcas9_inference(seq30_list, device):
     scores = sp.predict(seq30_list)["SpCas9"].tolist()
     return scores
 
+# Pipeline feature name -> DeepPrime-original feature name (also accepted as input column names)
+FEATURE_RENAME_MAP = {
+    "PBS_len": "PBSlen", "RTT_len": "RTlen", "RT-PBS_len": "RT-PBSlen",
+    "Tm1_PBS": "Tm1", "Tm2_RTT_cTarget_sameLength": "Tm2", "Tm3_RTT_cTarget_replaced": "Tm2new",
+    "Tm5_RTT_cDNA": "Tm3", "Tm4_cDNA_PAM-oppositeTarget": "Tm4", "deltaTm_Tm4-Tm2": "TmD",
+    "GC_count_PBS": "nGCcnt1", "GC_count_RTT": "nGCcnt2", "GC_count_RT-PBS": "nGCcnt3",
+    "GC_contents_PBS": "fGCcont1", "GC_contents_RTT": "fGCcont2", "GC_contents_RT-PBS": "fGCcont3",
+    "MFE_RT-PBS-polyT": "MFE3", "MFE_Spacer": "MFE4",
+}
+TYPE_COLS = ["type_sub", "type_ins", "type_del"]
+# Features that are *assumed* (not derivable from the sequence) when no input column exists
+ASSUMED_FEATURES = ["Edit_pos", "Edit_len", "RHA_len"]
+EDIT_TYPE_ALIASES = {
+    "sub": "Sub", "substitution": "Sub", "snv": "Sub", "replacement": "Sub",
+    "ins": "Ins", "insertion": "Ins",
+    "del": "Del", "deletion": "Del",
+}
+
+def setup_logging():
+    """Log to console and to FALLBACK_LOG_PATH so every fallback is recorded."""
+    os.makedirs(os.path.dirname(FALLBACK_LOG_PATH), exist_ok=True)
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        for h in (logging.StreamHandler(), logging.FileHandler(FALLBACK_LOG_PATH, mode="a")):
+            h.setFormatter(fmt)
+            logger.addHandler(h)
+
+# NOTE: FINAL_v6_ALL_INFO.csv (provided by a coworker, out of scope for this repo) has Edit_type/Edit_len
+# values that are internally inconsistent (e.g. 'c.1646del' labelled 'Sub' with Edit_len=0). It is
+# intentionally NOT used as input here; if it is ever used, its Edit_type column must be cleaned first.
+def resolve_edit_type(df):
+    """Per-row edit type ('Sub'/'Ins'/'Del') from input columns; falls back to 'Sub' with error logs."""
+    n = len(df)
+    if all(c in df.columns for c in TYPE_COLS):
+        tmat = df[TYPE_COLS].fillna(0).to_numpy()
+        bad = tmat.sum(axis=1) != 1
+        if bad.any():
+            logger.error("%d/%d rows have invalid one-hot %s; falling back to 'Sub' for those rows", int(bad.sum()), n, TYPE_COLS)
+        idx = np.where(bad, 0, tmat.argmax(axis=1))
+        return pd.Series(np.array(["Sub", "Ins", "Del"])[idx], index=df.index)
+    col = next((c for c in df.columns if c.lower() in ("edit_type", "edittype")), None)
+    if col is None:
+        logger.error("No edit-type column (Edit_type / %s) in input; falling back to 'Sub' for all %d rows", TYPE_COLS, n)
+        return pd.Series("Sub", index=df.index)
+    norm = df[col].astype(str).str.strip().str.lower().map(EDIT_TYPE_ALIASES)
+    bad = norm.isna()
+    if bad.any():
+        logger.error("%d/%d rows have unrecognized '%s' values (e.g. %s); falling back to 'Sub' for those rows",
+                     int(bad.sum()), n, col, df.loc[bad, col].unique()[:5].tolist())
+        norm = norm.fillna("Sub")
+    return norm
+
+def resolve_input_features(feat_df, df):
+    """Override sequence-derived/assumed features with input-data columns when available.
+
+    Every fallback to an assumed value is reported via logger.error. Returns the per-row edit type.
+    """
+    assert (feat_df["idx"].to_numpy() == df.index.to_numpy()).all(), "feat_df rows are not aligned with input df"
+    edit_types = resolve_edit_type(df).reset_index(drop=True)
+    feat_df["type_sub"] = (edit_types == "Sub").astype(int).to_numpy()
+    feat_df["type_ins"] = (edit_types == "Ins").astype(int).to_numpy()
+    feat_df["type_del"] = (edit_types == "Del").astype(int).to_numpy()
+
+    for f in FEATURE_COLS:
+        if f in TYPE_COLS:
+            continue
+        cands = [f] + ([FEATURE_RENAME_MAP[f]] if f in FEATURE_RENAME_MAP else [])
+        src = next((c for c in cands if c in df.columns), None)
+        if f not in feat_df.columns:
+            feat_df[f] = np.nan
+        if src is None:
+            if f in ASSUMED_FEATURES:
+                logger.error("No input column for '%s' (tried %s); falling back to the assumed value for all %d rows", f, cands, len(df))
+            elif f == "DeepSpCas9_score":
+                logger.info("No input column for 'DeepSpCas9_score'; will compute with DeepSpCas9")
+            else:
+                logger.info("No input column for '%s'; using value computed from sequence", f)
+            continue
+        vals = pd.to_numeric(df[src], errors="coerce").to_numpy(dtype=float)
+        ok = ~np.isnan(vals)
+        feat_df.loc[ok, f] = vals[ok]
+        if not ok.all():
+            logger.error("Input column '%s' missing/non-numeric for %d/%d rows; using computed/assumed value for those rows",
+                         src, int((~ok).sum()), len(df))
+    return edit_types
+
+def load_deepprime_base(weights_dir, device):
+    """Load the original DeepPrime ensemble (20 models) with the original GENET architecture.
+
+    strict=True guarantees that every parameter/buffer comes from the GENET files only; no PE6
+    checkpoint (weights or BatchNorm statistics) is involved.
+    """
+    files = sorted(glob.glob(os.path.join(weights_dir, "final_model_*.pt")))
+    if len(files) != 20:
+        raise FileNotFoundError(f"Expected 20 DeepPrime base models in {weights_dir}, found {len(files)}")
+    models = []
+    for f in files:
+        m = GeneInteractionModelVanilla()
+        m.load_state_dict(torch.load(f, map_location="cpu", weights_only=True), strict=True)
+        models.append(m.to(device).eval())
+    return models
+
+def predict_deepprime_base(models, g, b):
+    return torch.stack([m(g, b) for m in models], dim=0).mean(dim=0)
+
 def main():
+    setup_logging()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Executing on device: {device}")
     
@@ -173,14 +290,24 @@ def main():
     # Convert features to DataFrame
     feat_df = pd.DataFrame(features_list).sort_values('idx').reset_index(drop=True)
     
-    # Run SpCas9 prediction on all spacers
-    print("Running DeepSpCas9 predictions...")
-    t_sp = time.time()
-    seq30_list = feat_df['seq30'].tolist()
-    # Batch predict SpCas9 scores
-    sp_scores = run_deep_spcas9_inference(seq30_list, device)
-    feat_df['DeepSpCas9_score'] = sp_scores
-    print(f"DeepSpCas9 completed in {time.time() - t_sp:.2f}s.")
+    # Prefer input-data columns (edit type, edit pos/len, Tm/GC/MFE, DeepSpCas9, ...); log every fallback
+    edit_types = resolve_input_features(feat_df, df)
+    non_sub = edit_types != "Sub"
+    if non_sub.any():
+        # Wild-type context (Target_74) is reconstructed assuming a 1-bp substitution
+        raise ValueError(
+            f"{int(non_sub.sum())} rows have non-Sub edit type ({edit_types[non_sub].unique().tolist()}); "
+            "WT/edited context reconstruction in this script supports substitutions only."
+        )
+    
+    # Run SpCas9 prediction only for rows without an input DeepSpCas9_score
+    sp_missing = feat_df['DeepSpCas9_score'].isna().to_numpy()
+    if sp_missing.any():
+        print(f"Running DeepSpCas9 predictions for {int(sp_missing.sum())} rows...")
+        t_sp = time.time()
+        sp_scores = run_deep_spcas9_inference(feat_df.loc[sp_missing, 'seq30'].tolist(), device)
+        feat_df.loc[sp_missing, 'DeepSpCas9_score'] = sp_scores
+        print(f"DeepSpCas9 completed in {time.time() - t_sp:.2f}s.")
     
     # 3. Model predictions: DeepPrime base and DeepPrime6 (4 checkpoints)
     print("Loading DeepPrime models...")
@@ -201,15 +328,9 @@ def main():
         dp6_models[name] = model
         print(f"Loaded DeepPrime6 {name}")
         
-    # Also load the base model (reload base weights into one of the checkpoints' structures)
-    base_model = PE6DeepPrimeModule.load_from_checkpoint(os.path.join(ckpt_dir, "pe6a_mainft.ckpt"), map_location=device)
-    base_model.eval()
-    m_files = sorted(glob.glob("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/*.pt"))
-    for i, m_file in enumerate(m_files):
-        genet_sd = torch.load(m_file, map_location=device, weights_only=True)
-        remapped_sd = base_model._remap_genet_keys(genet_sd, base_model.feature_extractor.models[i])
-        base_model.feature_extractor.models[i].load_state_dict(remapped_sd, strict=False)
-    print("Loaded DeepPrime Base model.")
+    # DeepPrime base: original GENET architecture + original weights only (no PE6 checkpoint involved)
+    base_models = load_deepprime_base("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428", device)
+    print(f"Loaded DeepPrime Base model ({len(base_models)}-model ensemble, strict GENET weights).")
     
     # Prepare batch execution inputs for DeepPrime
     print("Running DeepPrime and DeepPrime6 predictions...")
@@ -219,15 +340,7 @@ def main():
     biofeatures_raw = feat_df[FEATURE_COLS].copy()
     
     # Rename columns to match DeepPrime original feature names
-    feature_rename_map = {
-        "PBS_len": "PBSlen", "RTT_len": "RTlen", "RT-PBS_len": "RT-PBSlen",
-        "Tm1_PBS": "Tm1", "Tm2_RTT_cTarget_sameLength": "Tm2", "Tm3_RTT_cTarget_replaced": "Tm2new",
-        "Tm5_RTT_cDNA": "Tm3", "Tm4_cDNA_PAM-oppositeTarget": "Tm4", "deltaTm_Tm4-Tm2": "TmD",
-        "GC_count_PBS": "nGCcnt1", "GC_count_RTT": "nGCcnt2", "GC_count_RT-PBS": "nGCcnt3",
-        "GC_contents_PBS": "fGCcont1", "GC_contents_RTT": "fGCcont2", "GC_contents_RT-PBS": "fGCcont3",
-        "MFE_RT-PBS-polyT": "MFE3", "MFE_Spacer": "MFE4",
-    }
-    biofeatures_renamed = biofeatures_raw.rename(columns=feature_rename_map)
+    biofeatures_renamed = biofeatures_raw.rename(columns=FEATURE_RENAME_MAP)
     # Order to match standard feature indexing
     standard_features = [
         "PBSlen", "RTlen", "RT-PBSlen", "Edit_pos", "Edit_len", "RHA_len",
@@ -237,9 +350,12 @@ def main():
     ]
     biofeatures_ordered = biofeatures_renamed[standard_features]
     
-    # Standardization
+    # Standardization (input-data statistics, same as PE6DeepPrimeDataset when no norm files are given)
     norm_mean = biofeatures_ordered.mean()
     norm_std = biofeatures_ordered.std()
+    zero_var = norm_std.index[(norm_std == 0) | norm_std.isna()].tolist()
+    if zero_var:
+        logger.warning("Zero-variance features standardized to 0 (fillna) as in PE6DeepPrimeDataset: %s", zero_var)
     norm_biofeatures = (biofeatures_ordered - norm_mean) / norm_std
     norm_biofeatures = norm_biofeatures.fillna(0).values
     
@@ -273,7 +389,7 @@ def main():
             b_batch = torch.from_numpy(norm_biofeatures[start_idx:end_idx].copy()).float().to(device)
             
             # Predict Base
-            preds_dp_base[start_idx:end_idx] = base_model((g_batch, b_batch)).cpu().numpy().flatten()
+            preds_dp_base[start_idx:end_idx] = predict_deepprime_base(base_models, g_batch, b_batch).cpu().numpy().flatten()
             # Predict DP6 variants
             preds_dp6_pe6a[start_idx:end_idx] = dp6_models["pred_dp6_pe6a"]((g_batch, b_batch)).cpu().numpy().flatten()
             preds_dp6_pe6b[start_idx:end_idx] = dp6_models["pred_dp6_pe6b"]((g_batch, b_batch)).cpu().numpy().flatten()
@@ -305,7 +421,7 @@ def main():
     pr_input_df['REF_ID'] = df['ID']
     pr_input_df['WildTypeSequence'] = feat_df['Target_74'].apply(lambda x: x[10:84])
     pr_input_df['PrimeEditedSequence'] = feat_df['Masked_EditSeq_74']
-    pr_input_df['Edit_type'] = 'Sub'
+    pr_input_df['Edit_type'] = edit_types.to_numpy()  # resolved from input columns (fallback logged)
     pr_input_df['Guide'] = feat_df['spacer']
     pr_input_df['PBS'] = df['PBS_pegRNA_DNA']
     pr_input_df['RTT'] = df['RTT_template_DNA']

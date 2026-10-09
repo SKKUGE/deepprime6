@@ -167,6 +167,7 @@ notebooks/wandb/**
 
 # Data protection (Ignore everything by default, allow specific files)
 data/*
+experiments/*
 !data/sample_data.csv
 
 # Weights

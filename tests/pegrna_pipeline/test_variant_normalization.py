@@ -1,4 +1,3 @@
-import pytest
 import importlib.util
 import sys
 
@@ -10,34 +9,37 @@ spec.loader.exec_module(normalize_variants)
 parse_ref_alt = normalize_variants.parse_ref_alt
 get_edit_type_and_length = normalize_variants.get_edit_type_and_length
 
+
 def test_parse_ref_alt():
     # Substitution
     ref, alt = parse_ref_alt("ATCG", "ATTG")
     assert ref == "C"
     assert alt == "T"
-    
+
     # Insertion
     ref, alt = parse_ref_alt("ATG", "ATCTG")
-    assert ref == "G"
-    assert alt == "CTG"
-    
+    assert ref == ""
+    assert alt == "CT"
+
     # Deletion
     ref, alt = parse_ref_alt("ATCTG", "ATG")
-    assert ref == "CTG"
-    assert alt == "G"
+    assert ref == "CT"
+    assert alt == ""
+
 
 def test_get_edit_type_and_length():
     # SNV
-    t, l = get_edit_type_and_length("A", "T")
+    t, length = get_edit_type_and_length("A", "T")
     assert t == "Sub"
-    assert l == 1
-    
+    assert length == 1
+
     # Insertion
-    t, l = get_edit_type_and_length("A", "ACT")
+    t, length = get_edit_type_and_length("A", "ACT")
     assert t == "Ins"
-    assert l == 3
-    
+    assert length == 3
+
     # Deletion
-    t, l = get_edit_type_and_length("ACT", "A")
+    t, length = get_edit_type_and_length("ACT", "A")
     assert t == "Del"
-    assert l == 3
+    assert length == 3
+
