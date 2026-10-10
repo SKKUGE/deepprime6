@@ -1,3 +1,32 @@
+"""PRIDICT2.0 Feature Extraction & Inference Pipeline Wrapper.
+
+This module bridges DeepPrime / PE6 tabular datasets with PRIDICT2.0 (Mathis et al.).
+It converts DeepPrime genomic coordinates and pegRNA design specifications into
+PRIDICT2.0's expected input representation, extracts biophysical features, and runs
+the official deep model ensemble to produce comparative editing scores.
+
+Key Capabilities:
+1. Feature Extraction & Schema Conversion:
+   - Reconstructs 99-bp wide initial/mutated targets from WideTargetSequence,
+     Guide, PBS, RTT, and edit specifications (Sub, Ins, Del).
+   - Computes biophysical properties: Wallace melting temperatures (protospacer,
+     extension, RT, RT overhang, PBS) and RT overhang matches.
+   - Calculates relative coordinate intervals (protospacer, PBS, RT locations)
+     strictly anchored at local spacer coordinates.
+2. PRIDICT2.0 Deep Inference:
+   - Loads pretrained PRIDICT2.0 deep neural network weights (Fold 0 ensemble).
+   - Performs multi-task forward inference for cell lines:
+     * HEK293T (`PRIDICT2_0_editing_Score_deep_HEK`)
+     * K562 (`PRIDICT2_0_editing_Score_deep_K562`)
+3. Primary Key Preservation:
+   - Preserves row identities (`REF_ID` / `sequence_name`) throughout extraction
+     and prediction, preventing row misalignment or merge duplication.
+4. Output Export:
+   - Saves predictions to `data/rq3_predictions_pridict2.csv` and
+     `data/rq3_test_library_with_pridict2.parquet` for downstream Track A benchmark
+     and Figure 3 generation.
+"""
+
 import os
 import sys
 import re
@@ -254,7 +283,7 @@ def primesequenceparsing(sequence: str) -> object:
 
 def extract_single_pegRNA_features(dfrow, editor='PE2-NGG'):
     sequence = get_pridict_input_seq(dfrow)
-    name = dfrow['REF_ID']
+    name = dfrow['REF_ID'] if 'REF_ID' in dfrow else dfrow['ID']
     target_guide = dfrow['Guide']
     target_pbs = dfrow['PBS']
     target_rtt = dfrow['RTT']

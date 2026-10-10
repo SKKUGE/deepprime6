@@ -6,7 +6,7 @@ datafilter:
 
 datasplit:
     stratification_column: "Target" # Pre-defined column to stratify the data
-    group_column: "ID" # Pre-defined column to group the data
+    group_column: "Guide" # Pre-defined column to group the data
     test_size: 0.2
     val_size: 0.25
 

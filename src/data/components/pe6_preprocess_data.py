@@ -20,10 +20,42 @@ UPSTREAM_LENGTH_TO_NICK = 21  # 74nt start to pegRNA nicking site
 DOWNSTREAM_IDX_TO_NICK = 53  # 74nt end to pegRNA nicking site
 
 
+def aggregate_pegrna_copies(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregates multiple barcode copies and duplicate pegRNAs into a single representative pegRNA row.
+    Combines: Guide + RTT + PBS + linker + motif + WideTargetSequence + Edit_type + Edit length + Edit position.
+    Averages efficiency columns and read counts, keeps first for sequence features.
+    """
+    peg_key = [
+        "Guide", "RTT", "PBS", "linker", "motif",
+        "WideTargetSequence", "Edit_type", "Edit length", "Edit position"
+    ]
+    avail_key = [c for c in peg_key if c in df.columns]
+    if len(avail_key) < 3 or not ("Guide" in avail_key and "PBS" in avail_key and "RTT" in avail_key):
+        return df
+
+    eff_cols = [c for c in df.columns if "comb_vis+" in c or "Normalized+" in c or "pe_ratio_%" in c]
+    rc_cols = [c for c in df.columns if "read_counts" in c]
+
+    agg_dict = {}
+    for col in df.columns:
+        if col in avail_key:
+            continue
+        elif col in eff_cols:
+            agg_dict[col] = "mean"
+        elif col in rc_cols:
+            agg_dict[col] = "sum"
+        else:
+            agg_dict[col] = "first"
+
+    df_agg = df.groupby(avail_key, as_index=False, sort=False).agg(agg_dict)
+    return df_agg
+
+
 def preprocess_data(
     data: pd.DataFrame = None,
     data_dir: str = None,
     output_file: str = None,
+    aggregate_duplicates: bool = None,
 ) -> pd.DataFrame:
     """Preprocesses the data for further analysis.
 
@@ -68,7 +100,11 @@ def preprocess_data(
     if "leading G" not in source.columns:
         source["leading G"] = ""
 
-    
+    # Aggregate barcode copies and duplicate pegRNAs (mean for efficiencies/counts)
+    if aggregate_duplicates is None:
+        aggregate_duplicates = (data is None and data_dir is not None)
+    if aggregate_duplicates:
+        source = aggregate_pegrna_copies(source)
 
     # Process data
     data = calculate_guide_features(source)
@@ -180,10 +216,11 @@ def calculate_guide_features(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: The modified DataFrame with additional columns "GuideStart", "GuideEnd", and "Nicking".
     """
+    context_col = "OligoSequence_fixed_length" if "OligoSequence_fixed_length" in df.columns else "WideTargetSequence"
+    if "ContextSeqUsed" not in df.columns:
+        df = df.assign(ContextSeqUsed=context_col)
     if "Nicking" in df.columns:
         return df
-
-    context_col = "OligoSequence_fixed_length" if "OligoSequence_fixed_length" in df.columns else "WideTargetSequence"
     
     def select_best_index(main_seq, guide_seq, indices):
         if len(indices) == 0:

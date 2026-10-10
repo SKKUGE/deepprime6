@@ -23,6 +23,7 @@ dependencies:
   - matplotlib
   - seaborn=0.13.2
   - statsmodels=0.14.2
+  - biopython
   - pip>=23
   - pip:
       - hydra-core==1.3.2
@@ -32,6 +33,10 @@ dependencies:
       - wandb==0.22.3
       - rootutils==1.0.7
       - genet==0.15.1
+      - viennarna          # required by genet (PrimeEditor / RNA folding)
+      - regex              # required by genet (PAM search)
+      - editdistance       # required by genet (UMI analysis)
+      - silence-tensorflow # required by genet.predict
       - pycaret==3.3.2
       - tensorflow==2.15.0
       - protobuf==4.24.4

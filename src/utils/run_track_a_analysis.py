@@ -1,3 +1,29 @@
+"""Track A Benchmark Analysis & Figure 3 Generation Pipeline.
+
+This script conducts the comprehensive Track A benchmark evaluation comparing
+DeepPrime6 models against baseline models (DeepPrime baseline and PRIDICT2.0)
+on strictly unseen, deduplicated test library data (rq3_test_library_dedup.parquet).
+
+Key Responsibilities:
+1. Data Ingestion & Alignment:
+   - Loads ground-truth experimental efficiencies from the deduplicated test set.
+   - Merges model predictions (DeepPrime baseline, DeepPrime6 fine-tuned variants,
+     PRIDICT2.0 HEK293T/K562) using strict primary key alignment.
+2. Leakage Audit & Verification:
+   - Verifies zero target site overlap (Guide/Spacer) between training and evaluation cohorts.
+3. Statistical Evaluation:
+   - Computes Spearman and Pearson correlation coefficients across 4 prime editing
+     systems (PE6a, PE6b, PE6c, PE2max-dRNaseH).
+   - Calculates 95% confidence intervals via non-parametric bootstrapping (n=1000).
+   - Evaluates performance across cohorts: All Edit Types vs. Substitutions Only (PRIDICT2 domain).
+4. Figure 3 Visualization Generation:
+   - Cross-domain prediction vs. ground truth scatter plots.
+   - Inter-model correlation heatmaps.
+   - Panel B: Grouped bar plots of model performance across editing systems with error bars.
+   - Panel C: Performance stratification by edit category (1-bp Sub, >1-bp Sub, Ins, Del).
+   - Exports figures and processed summary tables to `notebooks/plots/`.
+"""
+
 import os
 import pandas as pd
 import numpy as np
@@ -26,7 +52,11 @@ def bootstrap_spearman(y_true, y_pred, n_bootstraps=1000):
 def load_and_merge_data():
     print("Loading datasets...")
     # Ground truth test library
-    gt_df = pd.read_parquet("data/rq3_test_library.parquet")
+    gt_path = "data/rq3_test_library_dedup.parquet" if os.path.exists("data/rq3_test_library_dedup.parquet") else "data/rq3_test_library.parquet"
+    print(f"Loading ground truth test set from: {gt_path}")
+    gt_df = pd.read_parquet(gt_path)
+    
+    ref_col = 'ID' if 'ID' in gt_df.columns else 'REF_ID'
     
     def load_pred(path, pred_col_name):
         df = pd.read_csv(path)
@@ -41,8 +71,10 @@ def load_and_merge_data():
     dp6_drn = load_pred("data/rq3_predictions_dp6_drnaseh.csv", 'pred_dp6_drnaseh')
     pridict2 = pd.read_csv("data/rq3_predictions_pridict2.csv")
     
-    pridict2 = pridict2[['REF_ID', 'PRIDICT2_0_editing_Score_deep_HEK', 'PRIDICT2_0_editing_Score_deep_K562']].rename(
+    pridict_id_col = 'ID' if 'ID' in pridict2.columns else 'REF_ID'
+    pridict2 = pridict2[[pridict_id_col, 'PRIDICT2_0_editing_Score_deep_HEK', 'PRIDICT2_0_editing_Score_deep_K562']].rename(
         columns={
+            pridict_id_col: 'ID',
             'PRIDICT2_0_editing_Score_deep_HEK': 'pred_pridict2_hek',
             'PRIDICT2_0_editing_Score_deep_K562': 'pred_pridict2_k562'
         }
@@ -51,12 +83,23 @@ def load_and_merge_data():
     gt_df = gt_df.reset_index(drop=True)
     df = gt_df.copy()
     
-    df = df.merge(dp_base, left_on='REF_ID', right_on='ID', how='left').drop(columns=['ID'])
-    df = df.merge(dp6_pe6a, left_on='REF_ID', right_on='ID', how='left').drop(columns=['ID'])
-    df = df.merge(dp6_pe6b, left_on='REF_ID', right_on='ID', how='left').drop(columns=['ID'])
-    df = df.merge(dp6_pe6c, left_on='REF_ID', right_on='ID', how='left').drop(columns=['ID'])
-    df = df.merge(dp6_drn, left_on='REF_ID', right_on='ID', how='left').drop(columns=['ID'])
-    df = df.merge(pridict2, on='REF_ID', how='left')
+    for pred_df in [dp_base, dp6_pe6a, dp6_pe6b, dp6_pe6c, dp6_drn, pridict2]:
+        if ref_col == 'ID':
+            df = df.merge(pred_df, on='ID', how='left')
+        else:
+            df = df.merge(pred_df, left_on=ref_col, right_on='ID', how='left').drop(columns=['ID'])
+            
+    for i in range(1, 10):
+        col_3rep = f'Normalized+3rep_HEK-M-{i}-7D+pe_ratio_%'
+        if col_3rep not in df.columns:
+            rep_cols = [
+                f'Normalized+HEK-M-{i}-7D-KMC+pe_ratio_%',
+                f'Normalized+HEK-M-{i}-7D-UAR+pe_ratio_%',
+                f'Normalized+HEK-M2-{i}-7D-UAR+pe_ratio_%'
+            ]
+            valid_reps = [c for c in rep_cols if c in df.columns]
+            if len(valid_reps) > 0:
+                df[col_3rep] = df[valid_reps].mean(axis=1)
     
     print(f"Merged dataset shape: {df.shape}")
     return df
@@ -308,13 +351,15 @@ def generate_grouped_bar_plots(df):
     
     # ------------------ PANEL C: Edit Type Comparison (DeepPrime6) ------------------
     def classify_edit(row):
-        if row['Edit_type'] == 'Sub' and 1 <= row['Edit length'] <= 3:
+        edit_len = row['Edit_len'] if 'Edit_len' in row else row.get('Edit length', np.nan)
+        edit_type = row['Edit_type'] if 'Edit_type' in row else row.get('Edit type', '')
+        if str(edit_type).capitalize() == 'Sub' and 1 <= edit_len <= 3:
             return '1-3 nt substitution'
-        elif row['Edit_type'] == 'Del' and 1 <= row['Edit length'] <= 3:
+        elif str(edit_type).capitalize() == 'Del' and 1 <= edit_len <= 3:
             return '1-3 nt deletion'
-        elif row['Edit_type'] == 'Ins' and 1 <= row['Edit length'] <= 3:
+        elif str(edit_type).capitalize() == 'Ins' and 1 <= edit_len <= 3:
             return '1-3 nt insertion'
-        elif row['Edit_type'] == 'Ins' and 3 < row['Edit length'] <= 19:
+        elif str(edit_type).capitalize() == 'Ins' and 3 < edit_len <= 19:
             return '3-19 nt insertion'
         return None
 

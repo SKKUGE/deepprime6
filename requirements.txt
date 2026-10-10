@@ -27,3 +27,15 @@ pandas==2.1.4
 pyarrow==17.0.0
 # genet==0.15.1 (Install separately: pip install genet==0.15.1 --no-deps)
 scikit-learn==1.4.2
+
+# --------- bioinformatics & preprocessing --------- #
+biopython>=1.81          # used in pe6_preprocess_data.py (Bio.Seq)
+viennarna>=2.5.0         # required by genet (genet.predict.PrimeEditor / RNA secondary structure)
+regex>=2023.12.25        # required by genet (genet.design / PAM search)
+editdistance>=0.8.1      # required by genet (genet.analysis / UMI & barcode distance)
+silence-tensorflow>=1.2.3# required by genet (genet.predict import / suppresses TF C++ logs)
+
+# --------- visualization & analysis --------- #
+matplotlib>=3.8.0
+seaborn==0.13.2
+statsmodels>=0.14.0

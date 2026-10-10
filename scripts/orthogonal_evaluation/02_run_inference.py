@@ -297,6 +297,7 @@ def main():
 
     # DeepPrime & DeepPrime6 predictions via preprocess_data
     print("  Converting PRIDICT2 test rows to DeepPrime biofeatures...", flush=True)
+    p_test["orig_id"] = list(range(len(p_test)))
     prep_records = []
     for i, r in p_test.iterrows():
         p_loc = json.loads(r["PBSlocation"])
@@ -306,6 +307,7 @@ def main():
         nick = p_loc[1]
         edit_pos = int(r["deepeditposition"]) - nick    # DeepPrime way: The relative position from the nick
         prep_records.append({
+            "orig_id": r["orig_id"],
             "WideTargetSequence": seq_wt[5:79],
             "Guide": seq_wt[9:29],
             "leading G": "",
@@ -317,22 +319,24 @@ def main():
             "Nicking": 21,
             "ContextSeqUsed": "WideTargetSequence"
         })
-    p_prep_df = preprocess_data(data=pd.DataFrame(prep_records))
+    p_prep_df = preprocess_data(data=pd.DataFrame(prep_records), aggregate_duplicates=False)
 
     feature_rename_map = {
         "PBS_len": "PBSlen", "RTT_len": "RTlen", "RT-PBS_len": "RT-PBSlen",
         "Tm1_PBS": "Tm1", "Tm2_RTT_cTarget_sameLength": "Tm2", "Tm3_RTT_cTarget_replaced": "Tm2new",
-        "Tm5_RTT_cDNA": "Tm3", "Tm4_cDNA_PAM-oppositeTarget": "Tm4", "deltaTm_Tm4-Tm2": "TmD",
+        "Tm4_cDNA_PAM-oppositeTarget": "Tm3", "Tm5_RTT_cDNA": "Tm4", "deltaTm_Tm4-Tm2": "TmD",
         "GC_count_PBS": "nGCcnt1", "GC_count_RTT": "nGCcnt2", "GC_count_RT-PBS": "nGCcnt3",
         "GC_contents_PBS": "fGCcont1", "GC_contents_RTT": "fGCcont2", "GC_contents_RT-PBS": "fGCcont3",
         "MFE_RT-PBS-polyT": "MFE3", "MFE_Spacer": "MFE4",
     }
     p_prep_renamed = p_prep_df.rename(columns=feature_rename_map)
+    p_prep_sorted = p_prep_renamed.sort_values("orig_id").reset_index(drop=True)
+    assert (p_prep_sorted["orig_id"].values == p_test["orig_id"].values).all(), "Row alignment failed!"
 
     p_dp_preds = run_deepprime_inference(
-        p_prep_renamed["Target"].str.upper().tolist(),
-        p_prep_renamed["Masked_EditSeq"].str.upper().tolist(),
-        p_prep_renamed[FEATURE_NAMES],
+        p_prep_sorted["Target"].str.upper().tolist(),
+        p_prep_sorted["Masked_EditSeq"].str.upper().tolist(),
+        p_prep_sorted[FEATURE_NAMES],
         dp_base_models,
         dp6_models,
         norm_mean,

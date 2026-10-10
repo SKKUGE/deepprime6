@@ -1,5 +1,6 @@
 # DeepPrime6
-Official repository for DeepPrime6: Deep learning-based prediction of prime editing efficiencies and transfer learning pipelines.
+
+Official repository for DeepPrime6: Deep learning-based prediction of prime editing efficiencies of PE6 editors.
 
 ## Environment
 
@@ -7,7 +8,7 @@ Official repository for DeepPrime6: Deep learning-based prediction of prime edit
 
 ```bash
 conda env create -f environment.yaml
-conda activate myenv
+conda activate deepprime6
 ```
 
 ### Option B: pip
@@ -23,6 +24,7 @@ PIP_CONSTRAINT="" python -m pip install -r requirements.txt
 If you encounter an error like `ResolutionImpossible` or conflicts between `genet` and `tensorflow`:
 
 1. **Python 3.11+**: `genet` metadata strictly requires `tensorflow < 2.10.0`, but Python 3.11 requires `tensorflow >= 2.12.0`. We have verified that **`tensorflow 2.15.0`** works. To bypass strict dependency checks, install `genet` separately without dependencies:
+
    ```bash
    # 1. Install other dependencies (bypass system constraints if needed)
    PIP_CONSTRAINT="" pip install -r requirements.txt
@@ -30,7 +32,6 @@ If you encounter an error like `ResolutionImpossible` or conflicts between `gene
    # 2. Install genet separately to avoid metadata conflicts
    PIP_CONSTRAINT="" pip install genet==0.15.1 --no-deps
    ```
-
 2. **Protobuf Conflict**: If your environment forces `protobuf 4.x` (common in some managed environments), you must clear the `PIP_CONSTRAINT` variable as shown above.
 
 ## Data
@@ -51,8 +52,8 @@ If you are providing your own dataset (e.g., `data/my_dataset.csv`), ensure your
 - **`RTT`**: Reverse transcriptase template sequence.
 - **`leading G`**: Whether there is a leading G in the guide (`G` or `-`).
 - **Target columns**: Efficiency target metrics. The pipeline expects original research names which are mapped to readable names like `PE6a(+PEmaxCas9)` in `src/utils/dataprep.py`.
-    - Example for PE6a: `Normalized+3rep_HEK-M-3-7D+pe_ratio_%`
-    - Example for read counts (used for filtering): `HEK-M-3-7D-UAR+total_read_counts`
+  - Example for PE6a: `Normalized+3rep_HEK-M-3-7D+pe_ratio_%`
+  - Example for read counts (used for filtering): `HEK-M-3-7D-UAR+total_read_counts`
 
 *Note: The target columns are mapped to readable names like `PE6a(+PEmaxCas9)` in `src/utils/dataprep.py` using `RENAME_MAP` and `RENAME_MAP_FOR_VIS`. If your efficiency column is named differently, update these dictionaries or rename your column to match an existing key.*
 
@@ -63,6 +64,7 @@ If your data is **already preprocessed** and contains all DeepPrime feature colu
 We provide simple bash wrapper scripts to abstract away Hydra configurations and quickly run training, evaluation, and inference.
 
 ### 1. Training (Train)
+
 Train a model using a predefined experiment configuration.
 
 ```bash
@@ -78,6 +80,7 @@ bash scripts/train.sh pe6a-DP-baseline \
 ```
 
 ### 2. Evaluation (Test)
+
 Evaluate a trained model on a test set (requires ground truth labels). This uses `trainer.test()` under the hood.
 
 ```bash
@@ -92,6 +95,7 @@ bash scripts/eval.sh pe6a-DP-baseline \
 ```
 
 ### 3. Inference (Predict)
+
 Run inference on new data where labels are not required. This uses `trainer.predict()` and saves predictions to a CSV file.
 
 ```bash
@@ -110,16 +114,12 @@ bash scripts/predict.sh pe6a-DP-baseline \
 The following table lists the model weights reported in the paper. You can use the provided `scripts/predict.sh` script to evaluate these checkpoints or `scripts/train.sh` to fine-tune them further.
 
 
-[Model weights (move to Google Drive)][1]
-
-| PE type | Checkpoint path |
-|---|---:|
-| PE6a | `src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt` |
+| PE type      |                                                  Checkpoint path |
+| -------------- | -----------------------------------------------------------------: |
+| PE6a         |         `src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt` |
 | PEmaxdRNaseH | `src/models/weights/DeepPrime6-weights/pemaxdrnaseh_mainft.ckpt` |
-| PE6b | `src/models/weights/DeepPrime6-weights/pe6b_mainft.ckpt` |
-| PE6c | `src/models/weights/DeepPrime6-weights/pe6c_mainft.ckpt` |
-
-[1]: https://drive.google.com/file/d/1L9IRg5CMOv_NA2mFYY1aARYEBT-BTP43/view?usp=sharing
+| PE6b         |         `src/models/weights/DeepPrime6-weights/pe6b_mainft.ckpt` |
+| PE6c         |         `src/models/weights/DeepPrime6-weights/pe6c_mainft.ckpt` |
 
 ## Customizing Configurations
 
@@ -173,13 +173,13 @@ python src/train.py experiment=pe6a-DP-baseline ckpt_path=/path/to/last.ckpt
 ```
 
 ### Hyperparameter Optimization
+
 ```bash
 nohup python src/train.py -m \
   experiment=pe6a-DP-baseline \
   hparams_search=pe6-optuna \
   >> output-pe6a-optuna.log 2>&1 &
 ```
-
 
 ### Config directory structure
 
@@ -207,17 +207,17 @@ configs/
   hydra/                  Hydra output directory patterns
 ```
 
-
-
 ## Environment variables
 
 Copy `.env.example` to `.env` and fill in your credentials:
 
-| Variable | Purpose |
-|---|---|
+
+| Variable        | Purpose                             |
+| ----------------- | ------------------------------------- |
 | `WANDB_API_KEY` | Weights & Biases logging (optional) |
 
 ## Notes
 
 - No secrets are committed; all credentials are loaded from environment variables.
 - Checkpoints and Hydra run outputs are written under `logs/` (git-ignored).
+
