@@ -47,7 +47,7 @@ MODELS = [
     },
 ]
 
-PYTHON_EXEC = "/home/work/.conda/bin/python3"
+PYTHON_EXEC = os.environ.get("PYTHON_EXEC", sys.executable)
 
 def main():
     print("==========================================================================", flush=True)
