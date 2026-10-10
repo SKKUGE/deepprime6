@@ -1,0 +1,40 @@
+# @package _global_
+
+defaults:
+    - override /callbacks: default
+    - override /data: pe6
+    - override /model: pe6_deep_prime_only
+    - override /trainer: default
+    - override /logger: csv
+
+model:
+    model_weights:
+        requires_grad: True
+    optimizer:
+        lr: 0.008295989
+    scheduler:
+        T_0: 30
+        T_mult: 1
+    criterion:
+        scale_threshold: 3.6777
+        minimum_scaling_factor: 5.8749
+        alpha: 5.4100
+
+train: True
+test: True
+
+task_name: "PEmaxdRNaseH-ft"
+tags: ["maxdrnaseh-ft", "deep-prime-FT"]
+seed: 42
+
+data:
+    data_dir: ${paths.data_dir}/processed_data_dedup.parquet
+    batch_size: 256
+    skip_preprocessing: True
+    datasplit:
+        group_column: "Guide"
+        test_size: 0.2
+        val_size: 0.25
+
+    datafilter:
+        PE_types: ["PEmaxdRNaseH"]

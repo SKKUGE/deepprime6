@@ -10,27 +10,31 @@ defaults:
 model:
     model_weights:
         requires_grad: True
+    optimizer:
+        lr: 0.006704676
+    scheduler:
+        T_0: 20
+        T_mult: 1
+    criterion:
+        scale_threshold: 3.9993
+        minimum_scaling_factor: 5.6530
+        alpha: 5.4140
 
-# set False to skip model training
 train: True
-
-# evaluate on test set, using best model weights achieved during training
-# lightning chooses best weights based on the metric specified in checkpoint callback
 test: True
 
 task_name: "PE6a-ft"
-
-tags:
-    ["6a-ft", "deep-prime-FT"]
+tags: ["6a-ft", "deep-prime-FT"]
+seed: 2024
 
 data:
-    data_dir: ${paths.data_dir}/rq3_train.csv
+    data_dir: ${paths.data_dir}/processed_data_dedup.parquet
     batch_size: 256
+    skip_preprocessing: True
+    datasplit:
+        group_column: "Guide"
+        test_size: 0.2
+        val_size: 0.25
 
     datafilter:
         PE_types: ["PE6a(+PEmaxCas9)"]
-
-logger:
-    wandb:
-        offline: False # dev mode
-        log_model: True # upload lightning ckpts

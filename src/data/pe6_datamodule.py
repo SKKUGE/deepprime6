@@ -210,7 +210,10 @@ class PE6DataModule(LightningDataModule):
                 if self.hparams.skip_preprocessing
                 else self.processed_data_path
             )
-            data: pd.DataFrame = pd.read_parquet(data_path)
+            if str(data_path).endswith(".csv"):
+                data: pd.DataFrame = pd.read_csv(data_path)
+            else:
+                data: pd.DataFrame = pd.read_parquet(data_path)
 
             # Stratified data split - first split the data into training and test sets
             gss = GroupShuffleSplit(
@@ -246,6 +249,22 @@ class PE6DataModule(LightningDataModule):
                     X_train_val.iloc[train_index],
                     X_train_val.iloc[val_index],
                 )
+
+            # Leakage Audit & Verification
+            group_col = self.hparams.datasplit.get("group_column", "Guide")
+            if group_col in data.columns:
+                tr_grps = set(X_train[group_col])
+                val_grps = set(X_val[group_col])
+                te_grps = set(X_test[group_col])
+                assert len(tr_grps & te_grps) == 0, f"Critical Leakage: Train and Test share {len(tr_grps & te_grps)} groups in {group_col}!"
+                assert len(tr_grps & val_grps) == 0, f"Critical Leakage: Train and Val share {len(tr_grps & val_grps)} groups in {group_col}!"
+                log.info(f"Split Verification PASSED: 0 group leakage across Train ({len(X_train)}), Val ({len(X_val)}), Test ({len(X_test)}) on {group_col}")
+
+            # Save clean deduplicated test set for orthogonal benchmarks & Figure 3 evaluation
+            test_save_path = "data/rq3_test_library_dedup.parquet"
+            if not pathlib.Path(test_save_path).exists():
+                X_test.to_parquet(test_save_path, index=False)
+                log.info(f"Saved strictly unseen test split to {test_save_path} ({len(X_test)} samples)")
 
             # Load mean/std for normalization if provided
             norm_mean = None
@@ -293,7 +312,7 @@ class PE6DataModule(LightningDataModule):
                 norm_std=norm_std,
             )
 
-            if self.trainer.logger:
+            if self.trainer and self.trainer.logger:
                 self.trainer.logger.log_hyperparams(
                     {
                         "train/size": len(self.data_train),

@@ -64,7 +64,7 @@ def main():
     print("Running PRIDICT2.0 feature parsing and inference in chunks...")
     num_samples = len(df)
     pr_chunk_size = 2000
-    preds_pridict2_hek = np.zeros(num_samples)
+    preds_pridict2_hek = np.full(num_samples, np.nan)
     
     for chunk_start in range(0, num_samples, pr_chunk_size):
         chunk_end = min(chunk_start + pr_chunk_size, num_samples)
@@ -79,8 +79,8 @@ def main():
                 if feat is not None:
                     features_list_pr.append(feat)
                     valid_indices.append(idx)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Feature extraction failed for index {chunk_start + idx}: {e}")
                 
         if len(features_list_pr) > 0:
             pegdataframe = pd.DataFrame(features_list_pr)

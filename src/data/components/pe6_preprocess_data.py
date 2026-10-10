@@ -20,10 +20,42 @@ UPSTREAM_LENGTH_TO_NICK = 21  # 74nt start to pegRNA nicking site
 DOWNSTREAM_IDX_TO_NICK = 53  # 74nt end to pegRNA nicking site
 
 
+def aggregate_pegrna_copies(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregates multiple barcode copies and duplicate pegRNAs into a single representative pegRNA row.
+    Combines: Guide + RTT + PBS + linker + motif + WideTargetSequence + Edit_type + Edit length + Edit position.
+    Averages efficiency columns and read counts, keeps first for sequence features.
+    """
+    peg_key = [
+        "Guide", "RTT", "PBS", "linker", "motif",
+        "WideTargetSequence", "Edit_type", "Edit length", "Edit position"
+    ]
+    avail_key = [c for c in peg_key if c in df.columns]
+    if len(avail_key) < 3 or not ("Guide" in avail_key and "PBS" in avail_key and "RTT" in avail_key):
+        return df
+
+    eff_cols = [c for c in df.columns if "comb_vis+" in c or "Normalized+" in c or "pe_ratio_%" in c]
+    rc_cols = [c for c in df.columns if "read_counts" in c]
+
+    agg_dict = {}
+    for col in df.columns:
+        if col in avail_key:
+            continue
+        elif col in eff_cols:
+            agg_dict[col] = "mean"
+        elif col in rc_cols:
+            agg_dict[col] = "sum"
+        else:
+            agg_dict[col] = "first"
+
+    df_agg = df.groupby(avail_key, as_index=False, sort=False).agg(agg_dict)
+    return df_agg
+
+
 def preprocess_data(
     data: pd.DataFrame = None,
     data_dir: str = None,
     output_file: str = None,
+    aggregate_duplicates: bool = None,
 ) -> pd.DataFrame:
     """Preprocesses the data for further analysis.
 
@@ -65,8 +97,14 @@ def preprocess_data(
         source["PBS_length"] = source["PBS"].apply(len)
     if "RT_length" not in source.columns and "RTT" in source.columns:
         source["RT_length"] = source["RTT"].apply(len)
+    if "leading G" not in source.columns:
+        source["leading G"] = ""
 
-    
+    # Aggregate barcode copies and duplicate pegRNAs (mean for efficiencies/counts)
+    if aggregate_duplicates is None:
+        aggregate_duplicates = (data is None and data_dir is not None)
+    if aggregate_duplicates:
+        source = aggregate_pegrna_copies(source)
 
     # Process data
     data = calculate_guide_features(source)
@@ -178,10 +216,11 @@ def calculate_guide_features(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: The modified DataFrame with additional columns "GuideStart", "GuideEnd", and "Nicking".
     """
+    context_col = "OligoSequence_fixed_length" if "OligoSequence_fixed_length" in df.columns else "WideTargetSequence"
+    if "ContextSeqUsed" not in df.columns:
+        df = df.assign(ContextSeqUsed=context_col)
     if "Nicking" in df.columns:
         return df
-
-    context_col = "OligoSequence_fixed_length" if "OligoSequence_fixed_length" in df.columns else "WideTargetSequence"
     
     def select_best_index(main_seq, guide_seq, indices):
         if len(indices) == 0:
@@ -214,7 +253,9 @@ def calculate_guide_features(df: pd.DataFrame) -> pd.DataFrame:
     end_idx = query.str[1]
 
     df = df.assign(GuideStart=start_idx, GuideEnd=end_idx, ContextSeqUsed=context_col)
-    df["Nicking"] = df["GuideEnd"] - 3
+    # Cas9 cuts 3 bp upstream of PAM (between pos -4 and -3 relative to PAM).
+    # Since GuideEnd is pos -1, the first base 3' of the nick (0-based cut index) is GuideEnd - 2.
+    df["Nicking"] = df["GuideEnd"] - 2
     return df
 
 
@@ -260,8 +301,9 @@ def determine_seqs(
     if pd.isna(nick_index):
         raise ValueError(f"Nicking is NaN! wt_seq={wt_seq[:20]}... pbs_seq={pbs_seq} rt_seq={rt_seq}")
     
-    # Ensure nick_index is an integer
+    # Ensure nick_index and alt_len are integers
     nick_index = int(nick_index)
+    alt_len = int(alt_len)
 
     tm1_pbs = transcribe(pbs_seq)  # genet: transcribe(pbs) → T→U conversion
     tm2_rtt_ctarget = wt_seq[
@@ -530,8 +572,8 @@ def make_output_df(df: pd.DataFrame) -> pd.DataFrame:
             len(sSeq30) == 30
         ), f"Length of sSeq30 (30-nt window for SpCas9) is not 30: {len(sSeq30)}"
 
-        s5Bufferlen = UPSTREAM_LENGTH_TO_NICK - PBSlen
-        s3Bufferlen = DOWNSTREAM_IDX_TO_NICK - RTlen
+        s5Bufferlen = UPSTREAM_LENGTH_TO_NICK - int(PBSlen)
+        s3Bufferlen = DOWNSTREAM_IDX_TO_NICK - int(RTlen)
         sEDSeq74 = "x" * s5Bufferlen + sPBS_RTSeq + "x" * s3Bufferlen
         assert len(sEDSeq74) == 74, f"Length of sEDSeq74 is not 74: {len(sEDSeq74)}"
 
