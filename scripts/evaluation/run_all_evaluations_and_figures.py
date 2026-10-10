@@ -20,7 +20,7 @@ import pandas as pd
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 os.chdir(PROJECT_ROOT)
 
-PYTHON_EXEC = "/home/work/.conda/bin/python3"
+PYTHON_EXEC = os.environ.get("PYTHON_EXEC", sys.executable)
 
 def run_step(step_name, cmd):
     print(f"\n{'='*75}", flush=True)
@@ -79,6 +79,12 @@ def main():
     run_step(
         "4c. Orthogonal Benchmark Visualizations",
         [PYTHON_EXEC, "scripts/orthogonal_evaluation/03_plot_benchmark_results.py"]
+    )
+
+    # 5. Package Experiment Deliverable Archives
+    run_step(
+        "5. Package All Deliverable Archives",
+        [PYTHON_EXEC, "scripts/package_experiments.py"]
     )
 
     total_time = time.time() - start_all

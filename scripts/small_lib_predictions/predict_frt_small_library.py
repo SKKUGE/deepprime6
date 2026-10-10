@@ -161,13 +161,17 @@ def main():
         "MFE_RT-PBS-polyT": "MFE3", "MFE_Spacer": "MFE4",
     }
     dp_ckpt_dir = "src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428"
-    norm_mean = pd.read_csv(f"{dp_ckpt_dir}/mean.csv", header=None, index_col=0).squeeze()
-    norm_std = pd.read_csv(f"{dp_ckpt_dir}/std.csv", header=None, index_col=0).squeeze()
+    norm_mean_base = pd.read_csv(f"{dp_ckpt_dir}/mean.csv", header=None, index_col=0).squeeze()
+    norm_std_base = pd.read_csv(f"{dp_ckpt_dir}/std.csv", header=None, index_col=0).squeeze()
+
+    dp6_dir = "src/models/weights/DeepPrime6-weights"
+    norm_mean_pe6 = pd.read_csv(os.path.join(dp6_dir, "pe6_mean.csv"), header=None, index_col=0).squeeze()
+    norm_std_pe6 = pd.read_csv(os.path.join(dp6_dir, "pe6_std.csv"), header=None, index_col=0).squeeze()
 
     bio_renamed = processed_dp.rename(columns=feature_rename_map)
-    bio_ordered = bio_renamed[norm_mean.index]
-    norm_bio = (bio_ordered - norm_mean) / norm_std
-    norm_bio = norm_bio.fillna(0).values
+    bio_ordered = bio_renamed[norm_mean_base.index]
+    norm_bio_base = ((bio_ordered - norm_mean_base) / norm_std_base).fillna(0).values
+    norm_bio_pe6 = ((bio_ordered - norm_mean_pe6) / norm_std_pe6).fillna(0).values
 
     # Sequence encoding
     g_tensor = char_to_onehot_tensor(
@@ -175,7 +179,8 @@ def main():
         processed_dp["Masked_EditSeq"].tolist(),
         device
     )
-    b_tensor = torch.from_numpy(norm_bio).float().to(device)
+    b_tensor_base = torch.from_numpy(norm_bio_base).float().to(device)
+    b_tensor_pe6 = torch.from_numpy(norm_bio_pe6).float().to(device)
 
     # Load DeepPrime-base 20 models (Strict original GeneInteractionModelVanilla)
     print("  Loading 20 DeepPrime-base ensemble models...", flush=True)
@@ -188,7 +193,6 @@ def main():
 
     # Load DeepPrime6 checkpoints
     print("  Loading 4 DeepPrime6 checkpoints...", flush=True)
-    dp6_dir = "src/models/weights/DeepPrime6-weights"
     dp6_ckpts = {
         "pred_dp6_pe6a": "pe6a_mainft.ckpt",
         "pred_dp6_pe6b": "pe6b_mainft.ckpt",
@@ -204,9 +208,9 @@ def main():
     # Run DeepPrime & DeepPrime6 forward passes
     print("  Executing forward pass for DeepPrime-base and DeepPrime6...", flush=True)
     with torch.no_grad():
-        preds_dp_base = torch.stack([m(g_tensor, b_tensor) for m in base_models], dim=0).mean(dim=0).cpu().numpy().flatten()
+        preds_dp_base = torch.stack([m(g_tensor, b_tensor_base) for m in base_models], dim=0).mean(dim=0).cpu().numpy().flatten()
         dp6_predictions = {
-            col_name: model((g_tensor, b_tensor)).cpu().numpy().flatten()
+            col_name: model((g_tensor, b_tensor_pe6)).cpu().numpy().flatten()
             for col_name, model in dp6_models.items()
         }
 

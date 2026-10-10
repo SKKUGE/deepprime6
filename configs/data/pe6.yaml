@@ -21,4 +21,6 @@ dataset:
     train_read_count_filter: 500
     val_read_count_filter: 500
     test_read_count_filter: 500
+    norm_mean_path: null
+    norm_std_path: null
 csv_path: null
