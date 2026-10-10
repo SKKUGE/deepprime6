@@ -9,17 +9,25 @@ Saves to data/processed_data_dedup.parquet and updates rq3_test_library_dedup.pa
 """
 
 import os
+import sys
+import argparse
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import GroupShuffleSplit
 
-SRC_PARQUET = "/home/work/workdir/pe6-deep/data/pe6/processed_data.parquet"
-OUTPUT_PARQUET = "data/processed_data_dedup.parquet"
-RQ3_TEST_OUTPUT = "data/rq3_test_library_dedup.parquet"
+DEFAULT_SRC = os.environ.get("PE6_RAW_PARQUET", "data/processed_data.parquet" if os.path.exists("data/processed_data.parquet") else "/home/work/workdir/pe6-deep/data/pe6/processed_data.parquet")
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Deduplicate PE6 dataset by unique pegRNA design.")
+    parser.add_argument("--src_parquet", type=str, default=DEFAULT_SRC, help="Path to raw processed parquet file.")
+    parser.add_argument("--output_parquet", type=str, default="data/processed_data_dedup.parquet", help="Path to save deduplicated dataset.")
+    parser.add_argument("--test_output", type=str, default="data/rq3_test_library_dedup.parquet", help="Path to export clean test split.")
+    return parser.parse_args()
 
 def main():
-    print(f"Loading raw processed data from {SRC_PARQUET}...")
-    df = pd.read_parquet(SRC_PARQUET)
+    args = parse_args()
+    print(f"Loading raw processed data from {args.src_parquet}...")
+    df = pd.read_parquet(args.src_parquet)
     print(f"Loaded raw data: {df.shape}")
 
     peg_key = [
@@ -51,16 +59,17 @@ def main():
     print(f"Deduplicated dataset shape: {df_dedup.shape} (from {df.shape[0]} rows)")
 
     # Save deduplicated parquet
-    os.makedirs(os.path.dirname(OUTPUT_PARQUET), exist_ok=True)
-    df_dedup.to_parquet(OUTPUT_PARQUET)
-    print(f"Saved deduplicated dataset to {OUTPUT_PARQUET}")
+    os.makedirs(os.path.dirname(args.output_parquet), exist_ok=True)
+    df_dedup.to_parquet(args.output_parquet)
+    print(f"Saved deduplicated dataset to {args.output_parquet}")
 
     # Generate split to verify zero leakage and export test set
     splitter_test = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
     train_val_idx, test_idx = next(splitter_test.split(df_dedup, groups=df_dedup["Guide"]))
     test_df = df_dedup.iloc[test_idx].copy()
-    test_df.to_parquet(RQ3_TEST_OUTPUT)
-    print(f"Saved strictly unseen test library to {RQ3_TEST_OUTPUT}: {test_df.shape}")
+    os.makedirs(os.path.dirname(args.test_output), exist_ok=True)
+    test_df.to_parquet(args.test_output)
+    print(f"Saved strictly unseen test library to {args.test_output}: {test_df.shape}")
 
 if __name__ == "__main__":
     main()

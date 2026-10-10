@@ -344,7 +344,7 @@ def main():
     # Order to match standard feature indexing
     standard_features = [
         "PBSlen", "RTlen", "RT-PBSlen", "Edit_pos", "Edit_len", "RHA_len",
-        "type_sub", "type_ins", "type_del", "Tm1", "Tm2", "Tm2new", "Tm4", "Tm3", "TmD",
+        "type_sub", "type_ins", "type_del", "Tm1", "Tm2", "Tm2new", "Tm3", "Tm4", "TmD",
         "nGCcnt1", "nGCcnt2", "nGCcnt3", "fGCcont1", "fGCcont2", "fGCcont3",
         "MFE3", "MFE4", "DeepSpCas9_score"
     ]

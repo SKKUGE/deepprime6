@@ -20,7 +20,7 @@ import pandas as pd
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 os.chdir(PROJECT_ROOT)
 
-PYTHON_EXEC = "/home/work/.conda/bin/python3"
+PYTHON_EXEC = os.environ.get("PYTHON_EXEC", sys.executable)
 
 def run_step(step_name, cmd):
     print(f"\n{'='*75}", flush=True)

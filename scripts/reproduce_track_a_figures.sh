@@ -5,13 +5,7 @@ set -e
 # Automatically move to the project root directory
 cd "$(dirname "$0")/.."
 PROJECT_ROOT=$(pwd)
-CONDA_ENV="$PROJECT_ROOT/../DeepPrime6/.conda"  # Change if necessary
-PYTHON_EXEC="$CONDA_ENV/bin/python"
-
-# Fallback if conda python doesn't exist
-if [ ! -f "$PYTHON_EXEC" ]; then
-    PYTHON_EXEC="python"
-fi
+PYTHON_EXEC="${PYTHON_EXEC:-python3}"
 
 # Parse arguments
 FRESH_START=false
@@ -30,8 +24,10 @@ if [ "$FRESH_START" = true ]; then
     
     echo "1/4: Converting Parquet to CSV"
     $PYTHON_EXEC -c "
+import os
 import pandas as pd
-df = pd.read_parquet('data/rq3_test_library.parquet')
+p = 'data/rq3_test_library_dedup.parquet' if os.path.exists('data/rq3_test_library_dedup.parquet') else 'data/rq3_test_library.parquet'
+df = pd.read_parquet(p)
 df.to_csv('data/rq3_test_library.csv', index=False)
 "
 

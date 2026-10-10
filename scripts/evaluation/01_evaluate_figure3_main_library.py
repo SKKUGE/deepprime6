@@ -128,16 +128,25 @@ def main():
                 df_test[c3] = df_test[reps].mean(axis=1)
 
     # Prepare features
-    norm_mean = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/mean.csv", index_col=0, header=None).squeeze()
-    norm_std = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/std.csv", index_col=0, header=None).squeeze()
+    # 1. Base normalization for DeepPrime-base
+    norm_mean_base = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/mean.csv", index_col=0, header=None).squeeze()
+    norm_std_base = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/std.csv", index_col=0, header=None).squeeze()
+
+    # 2. Canonical PE6 normalization for DeepPrime6 checkpoints
+    pe6_ckpt_dir = "src/models/weights/DeepPrime6-weights"
+    norm_mean_pe6 = pd.read_csv(os.path.join(pe6_ckpt_dir, "pe6_mean.csv"), index_col=0, header=None).squeeze()
+    norm_std_pe6 = pd.read_csv(os.path.join(pe6_ckpt_dir, "pe6_std.csv"), index_col=0, header=None).squeeze()
 
     bio_df = df_test.rename(columns=FEATURE_RENAME_MAP)
     missing_bio = [c for c in FEATURE_NAMES if c not in bio_df.columns]
     if missing_bio:
         raise ValueError(f"Missing biofeatures in test set: {missing_bio}")
 
-    b_norm = (bio_df[FEATURE_NAMES] - norm_mean) / norm_std
-    b_tensor = torch.from_numpy(b_norm.fillna(0).values).float().to(device)
+    b_norm_base = (bio_df[FEATURE_NAMES] - norm_mean_base) / norm_std_base
+    b_tensor_base = torch.from_numpy(b_norm_base.fillna(0).values).float().to(device)
+
+    b_norm_pe6 = (bio_df[FEATURE_NAMES] - norm_mean_pe6) / norm_std_pe6
+    b_tensor_pe6 = torch.from_numpy(b_norm_pe6.fillna(0).values).float().to(device)
 
     wt_seqs = df_test["Target"].tolist() if "Target" in df_test.columns else df_test["WideTargetSequence"].tolist()
     ed_seqs = df_test["Masked_EditSeq"].tolist() if "Masked_EditSeq" in df_test.columns else wt_seqs
@@ -166,11 +175,12 @@ def main():
         for start_idx in range(0, num_samples, batch_size):
             end_idx = min(start_idx + batch_size, num_samples)
             g_batch = char_to_onehot_tensor(wt_seqs[start_idx:end_idx], ed_seqs[start_idx:end_idx], device)
-            b_batch = b_tensor[start_idx:end_idx]
+            b_batch_base = b_tensor_base[start_idx:end_idx]
+            b_batch_pe6 = b_tensor_pe6[start_idx:end_idx]
 
-            preds_dp_base[start_idx:end_idx] = predict_deepprime_base(dp_base_models, g_batch, b_batch).cpu().numpy().flatten()
+            preds_dp_base[start_idx:end_idx] = predict_deepprime_base(dp_base_models, g_batch, b_batch_base).cpu().numpy().flatten()
             for k, m in dp6_models.items():
-                preds_dp6[k][start_idx:end_idx] = m((g_batch, b_batch)).cpu().numpy().flatten()
+                preds_dp6[k][start_idx:end_idx] = m((g_batch, b_batch_pe6)).cpu().numpy().flatten()
 
     df_test["Pred_DeepPrime_Base"] = preds_dp_base
     for k, v in preds_dp6.items():
@@ -202,6 +212,7 @@ def main():
     print(df_res.to_string(index=False), flush=True)
 
     out_csv = "figures/evaluation/Figure3_main_library_test_performance.csv"
+    os.makedirs(os.path.dirname(out_csv), exist_ok=True)
     df_res.to_csv(out_csv, index=False)
     print(f"\nSaved metrics summary to: {out_csv}", flush=True)
 

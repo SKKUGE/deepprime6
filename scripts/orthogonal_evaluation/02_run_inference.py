@@ -98,11 +98,14 @@ def char_to_onehot_tensor(seqs_wt, seqs_ed, device):
     return (2 * torch.from_numpy(g_arr) - 1).float().to(device)
 
 
-def run_deepprime_inference(seqs_wt, seqs_ed, biofeatures_df, dp_base_models, dp6_models, norm_mean, norm_std, device, batch_size=4096):
-    """Runs DeepPrime-base and all DeepPrime6 models in GPU batches."""
+def run_deepprime_inference(seqs_wt, seqs_ed, biofeatures_df, dp_base_models, dp6_models, norm_mean_base, norm_std_base, norm_mean_pe6, norm_std_pe6, device, batch_size=4096):
+    """Runs DeepPrime-base and all DeepPrime6 models in GPU batches with canonical domain normalization."""
     num_samples = len(seqs_wt)
-    b_norm = (biofeatures_df[FEATURE_NAMES] - norm_mean) / norm_std
-    b_tensor = torch.from_numpy(b_norm.fillna(0).values).float().to(device)
+    b_norm_base = (biofeatures_df[FEATURE_NAMES] - norm_mean_base) / norm_std_base
+    b_tensor_base = torch.from_numpy(b_norm_base.fillna(0).values).float().to(device)
+
+    b_norm_pe6 = (biofeatures_df[FEATURE_NAMES] - norm_mean_pe6) / norm_std_pe6
+    b_tensor_pe6 = torch.from_numpy(b_norm_pe6.fillna(0).values).float().to(device)
     
     preds_dp_base = np.zeros(num_samples, dtype=np.float32)
     preds_pe6a = np.zeros(num_samples, dtype=np.float32)
@@ -117,16 +120,17 @@ def run_deepprime_inference(seqs_wt, seqs_ed, biofeatures_df, dp_base_models, dp
             wt_sub = seqs_wt[start_idx:end_idx]
             ed_sub = seqs_ed[start_idx:end_idx]
             g_batch = char_to_onehot_tensor(wt_sub, ed_sub, device)
-            b_batch = b_tensor[start_idx:end_idx]
+            b_batch_base = b_tensor_base[start_idx:end_idx]
+            b_batch_pe6 = b_tensor_pe6[start_idx:end_idx]
             
-            # DeepPrime Base (20 models average)
-            preds_dp_base[start_idx:end_idx] = predict_deepprime_base(dp_base_models, g_batch, b_batch).cpu().numpy().flatten()
+            # DeepPrime Base (20 models average with base normalization)
+            preds_dp_base[start_idx:end_idx] = predict_deepprime_base(dp_base_models, g_batch, b_batch_base).cpu().numpy().flatten()
             
-            # DeepPrime6 Models
-            preds_pe6a[start_idx:end_idx] = dp6_models["pe6a"]((g_batch, b_batch)).cpu().numpy().flatten()
-            preds_pe6b[start_idx:end_idx] = dp6_models["pe6b"]((g_batch, b_batch)).cpu().numpy().flatten()
-            preds_pe6c[start_idx:end_idx] = dp6_models["pe6c"]((g_batch, b_batch)).cpu().numpy().flatten()
-            preds_drnaseh[start_idx:end_idx] = dp6_models["drnaseh"]((g_batch, b_batch)).cpu().numpy().flatten()
+            # DeepPrime6 Models (with canonical PE6 normalization)
+            preds_pe6a[start_idx:end_idx] = dp6_models["pe6a"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
+            preds_pe6b[start_idx:end_idx] = dp6_models["pe6b"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
+            preds_pe6c[start_idx:end_idx] = dp6_models["pe6c"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
+            preds_drnaseh[start_idx:end_idx] = dp6_models["drnaseh"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
             
     return {
         "pred_dp_base": preds_dp_base,
@@ -156,14 +160,17 @@ def main():
 
     # 1. Load Pretrained Weights & Checkpoints
     print("\n--- 1. Loading Pretrained Weights & Checkpoints ---", flush=True)
-    norm_mean = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/mean.csv", index_col=0, header=None).squeeze()
-    norm_std = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/std.csv", index_col=0, header=None).squeeze()
+    norm_mean_base = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/mean.csv", index_col=0, header=None).squeeze()
+    norm_std_base = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/std.csv", index_col=0, header=None).squeeze()
+
+    ckpt_dir = "src/models/weights/DeepPrime6-weights"
+    norm_mean_pe6 = pd.read_csv(os.path.join(ckpt_dir, "pe6_mean.csv"), index_col=0, header=None).squeeze()
+    norm_std_pe6 = pd.read_csv(os.path.join(ckpt_dir, "pe6_std.csv"), index_col=0, header=None).squeeze()
 
     print("  Loading DeepPrime-base 20-model ensemble...", flush=True)
     dp_base_models = load_deepprime_base_models("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428", device)
 
     print("  Loading DeepPrime6 4 checkpoints...", flush=True)
-    ckpt_dir = "src/models/weights/DeepPrime6-weights"
     dp6_models = {
         "pe6a": PE6DeepPrimeModule.load_from_checkpoint(os.path.join(ckpt_dir, "pe6a_mainft.ckpt"), strict=False).to(device).eval(),
         "pe6b": PE6DeepPrimeModule.load_from_checkpoint(os.path.join(ckpt_dir, "pe6b_mainft.ckpt"), strict=False).to(device).eval(),
@@ -194,8 +201,10 @@ def main():
         dp_test[FEATURE_NAMES],
         dp_base_models,
         dp6_models,
-        norm_mean,
-        norm_std,
+        norm_mean_base,
+        norm_std_base,
+        norm_mean_pe6,
+        norm_std_pe6,
         device
     )
     for k, v in dp_preds.items():
@@ -204,7 +213,8 @@ def main():
     # PRIDICT2.0 prediction on DeepPrime test set
     print("  Extracting PRIDICT2 features for filtered DeepPrime rows...", flush=True)
     pr_features_list = []
-    for i, r in dp_test.iterrows():
+    failed_pr_indices = set()
+    for row_idx, (i, r) in enumerate(dp_test.iterrows()):
         w = r["WTS_clean"]
         u = r["Unedited (gRNA binding -2 ~ RTT binding +2)"]
         p = r["Prime-edited (gRNA binding -2 ~ RTT binding +2)"]
@@ -233,8 +243,10 @@ def main():
             if feat is not None:
                 pr_features_list.append(feat)
             else:
+                failed_pr_indices.add(row_idx)
                 pr_features_list.append({"sequence_name": r["ID"]})
         except Exception:
+            failed_pr_indices.add(row_idx)
             pr_features_list.append({"sequence_name": r["ID"]})
 
     pr_peg_df = pd.DataFrame(pr_features_list)
@@ -259,6 +271,9 @@ def main():
     agg_df = compute_average_predictions(tmp_df, grp_cols=["seq_id", "dataset_name"])
     hek_df = agg_df[agg_df["dataset_name"] == "HEK"].sort_values("seq_id").reset_index(drop=True)
     dp_test["pred_pridict2_hek"] = hek_df["pred_averageedited"].values * 100
+    if failed_pr_indices:
+        dp_test.loc[list(failed_pr_indices), "pred_pridict2_hek"] = np.nan
+        print(f"  Assigned NaN to {len(failed_pr_indices)} PRIDICT2 feature-extraction failure rows.", flush=True)
 
     # Save DeepPrime predictions
     dp_out_cols = [
@@ -339,8 +354,10 @@ def main():
         p_prep_sorted[FEATURE_NAMES],
         dp_base_models,
         dp6_models,
-        norm_mean,
-        norm_std,
+        norm_mean_base,
+        norm_std_base,
+        norm_mean_pe6,
+        norm_std_pe6,
         device
     )
     for k, v in p_dp_preds.items():
