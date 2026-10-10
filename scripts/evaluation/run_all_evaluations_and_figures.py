@@ -81,6 +81,12 @@ def main():
         [PYTHON_EXEC, "scripts/orthogonal_evaluation/03_plot_benchmark_results.py"]
     )
 
+    # 5. Package Experiment Deliverable Archives
+    run_step(
+        "5. Package All Deliverable Archives",
+        [PYTHON_EXEC, "scripts/package_experiments.py"]
+    )
+
     total_time = time.time() - start_all
     print("\n==========================================================================", flush=True)
     print(f"=== ALL FINAL EVALUATIONS AND FIGURES GENERATED IN {total_time/60:.2f} MINUTES! ===", flush=True)

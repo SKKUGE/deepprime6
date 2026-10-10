@@ -350,14 +350,19 @@ def main():
     ]
     biofeatures_ordered = biofeatures_renamed[standard_features]
     
-    # Standardization (input-data statistics, same as PE6DeepPrimeDataset when no norm files are given)
-    norm_mean = biofeatures_ordered.mean()
-    norm_std = biofeatures_ordered.std()
-    zero_var = norm_std.index[(norm_std == 0) | norm_std.isna()].tolist()
-    if zero_var:
-        logger.warning("Zero-variance features standardized to 0 (fillna) as in PE6DeepPrimeDataset: %s", zero_var)
-    norm_biofeatures = (biofeatures_ordered - norm_mean) / norm_std
-    norm_biofeatures = norm_biofeatures.fillna(0).values
+    # Canonical statistics for dual normalization
+    # 1. Base statistics for DeepPrime-base
+    base_norm_dir = "src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428"
+    norm_mean_base = pd.read_csv(os.path.join(base_norm_dir, "mean.csv"), header=None, index_col=0).squeeze()
+    norm_std_base = pd.read_csv(os.path.join(base_norm_dir, "std.csv"), header=None, index_col=0).squeeze()
+
+    # 2. Canonical PE6 statistics for DeepPrime6 checkpoints
+    pe6_norm_dir = "src/models/weights/DeepPrime6-weights"
+    norm_mean_pe6 = pd.read_csv(os.path.join(pe6_norm_dir, "pe6_mean.csv"), header=None, index_col=0).squeeze()
+    norm_std_pe6 = pd.read_csv(os.path.join(pe6_norm_dir, "pe6_std.csv"), header=None, index_col=0).squeeze()
+
+    norm_biofeatures_base = ((biofeatures_ordered - norm_mean_base) / norm_std_base).fillna(0).values
+    norm_biofeatures_pe6 = ((biofeatures_ordered - norm_mean_pe6) / norm_std_pe6).fillna(0).values
     
     # Sequence encoding
     print("One-hot encoding sequences...")
@@ -386,15 +391,16 @@ def main():
             end_idx = min(start_idx + batch_size, num_samples)
             g_batch = torch.from_numpy(genetic_features[start_idx:end_idx].copy()).float().to(device)
             g_batch = g_batch.permute(0, 3, 1, 2)  # shape (batch, 4, 2, 74)
-            b_batch = torch.from_numpy(norm_biofeatures[start_idx:end_idx].copy()).float().to(device)
+            b_batch_base = torch.from_numpy(norm_biofeatures_base[start_idx:end_idx].copy()).float().to(device)
+            b_batch_pe6 = torch.from_numpy(norm_biofeatures_pe6[start_idx:end_idx].copy()).float().to(device)
             
-            # Predict Base
-            preds_dp_base[start_idx:end_idx] = predict_deepprime_base(base_models, g_batch, b_batch).cpu().numpy().flatten()
-            # Predict DP6 variants
-            preds_dp6_pe6a[start_idx:end_idx] = dp6_models["pred_dp6_pe6a"]((g_batch, b_batch)).cpu().numpy().flatten()
-            preds_dp6_pe6b[start_idx:end_idx] = dp6_models["pred_dp6_pe6b"]((g_batch, b_batch)).cpu().numpy().flatten()
-            preds_dp6_pe6c[start_idx:end_idx] = dp6_models["pred_dp6_pe6c"]((g_batch, b_batch)).cpu().numpy().flatten()
-            preds_dp6_drnaseh[start_idx:end_idx] = dp6_models["pred_dp6_drnaseh"]((g_batch, b_batch)).cpu().numpy().flatten()
+            # Predict Base with canonical Base normalization
+            preds_dp_base[start_idx:end_idx] = predict_deepprime_base(base_models, g_batch, b_batch_base).cpu().numpy().flatten()
+            # Predict DP6 variants with canonical PE6 normalization
+            preds_dp6_pe6a[start_idx:end_idx] = dp6_models["pred_dp6_pe6a"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
+            preds_dp6_pe6b[start_idx:end_idx] = dp6_models["pred_dp6_pe6b"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
+            preds_dp6_pe6c[start_idx:end_idx] = dp6_models["pred_dp6_pe6c"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
+            preds_dp6_drnaseh[start_idx:end_idx] = dp6_models["pred_dp6_drnaseh"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
             
             if (start_idx + batch_size) % 102400 == 0 or end_idx == num_samples:
                 print(f"Processed {end_idx}/{num_samples} rows for DeepPrime...")

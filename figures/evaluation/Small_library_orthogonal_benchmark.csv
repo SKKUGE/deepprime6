@@ -1,0 +1,7 @@
+Evaluation Target,Model Evaluated,DeepPrime-base (Pearson r),DeepPrime-base (Spearman rho),DeepPrime6 (Pearson r),DeepPrime6 (Spearman rho),Delta Pearson r,N (Valid)
+PEmaxdRNaseH (PE6-2),PEmaxdRNaseH,0.4161,0.6232,0.6454,0.659,0.2293,1960
+PE6b (PE6-3),PE6b,0.454,0.641,0.651,0.7091,0.1969,1960
+PE6c (PE6-4),PE6c,0.3904,0.5873,0.587,0.6486,0.1966,1960
+PE7maxdRNaseH (PE7-2),PEmaxdRNaseH,0.4511,0.6373,0.7543,0.708,0.3032,1960
+PE7b (PE7-3),PE6b,0.4607,0.6477,0.7208,0.7238,0.2601,1960
+PE7c (PE7-4),PE6c,0.4255,0.5975,0.695,0.69,0.2695,1960
