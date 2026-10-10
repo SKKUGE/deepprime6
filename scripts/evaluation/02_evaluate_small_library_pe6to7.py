@@ -223,8 +223,121 @@ def main():
     out_svg = "figures/evaluation/Small_library_orthogonal_benchmark.svg"
     plt.savefig(out_png, dpi=300, bbox_inches="tight")
     plt.savefig(out_svg, format="svg", bbox_inches="tight")
+    exp_fig_dir = "experiments/20261009_small_library_pe6to7/figures"
+    os.makedirs(exp_fig_dir, exist_ok=True)
+    plt.savefig(os.path.join(exp_fig_dir, "Small_library_orthogonal_benchmark.png"), dpi=300, bbox_inches="tight")
+    plt.savefig(os.path.join(exp_fig_dir, "Small_library_orthogonal_benchmark.svg"), format="svg", bbox_inches="tight")
     plt.close()
-    print(f"Saved plots to:\n  - {out_png}\n  - {out_svg}", flush=True)
+    print(f"Saved scatter plots to:\n  - {out_png}\n  - {out_svg}", flush=True)
+
+    # 2. Spearman Comparison Bar Plot
+    x = np.arange(len(df_res))
+    width = 0.35
+    fig, ax = plt.subplots(figsize=(10, 5.5), dpi=300)
+    bars1 = ax.bar(x - width/2, df_res["DeepPrime-base (Spearman rho)"], width, label="DeepPrime (Base Ensemble)", color="#7f8c8d", alpha=0.85, edgecolor="black")
+    bars2 = ax.bar(x + width/2, df_res["DeepPrime6 (Spearman rho)"], width, label="DeepPrime6 (Fine-Tuned)", color="#2980b9", alpha=0.9, edgecolor="black")
+
+    for b in bars1:
+        h = b.get_height()
+        ax.annotate(f"{h:.3f}", xy=(b.get_x() + b.get_width()/2, h), xytext=(0, 3),
+                    textcoords="offset points", ha="center", va="bottom", fontsize=8.5)
+    for b in bars2:
+        h = b.get_height()
+        ax.annotate(f"{h:.3f}", xy=(b.get_x() + b.get_width()/2, h), xytext=(0, 3),
+                    textcoords="offset points", ha="center", va="bottom", fontsize=8.5, weight="bold")
+
+    ax.set_ylabel("Spearman Correlation ($\\rho$)", fontsize=13, weight="bold")
+    ax.set_title("Rank Accuracy: DeepPrime (Base) vs DeepPrime6 on Small Library", fontsize=14, weight="bold", pad=12)
+    ax.set_xticks(x)
+    ax.set_xticklabels([t.replace(" (", "\n(") for t in df_res["Evaluation Target"]], fontsize=11)
+    ax.set_ylim(0, 0.85)
+    ax.legend(frameon=True, fontsize=11, loc="upper right")
+    sns.despine()
+    plt.tight_layout()
+
+    plt.savefig("figures/evaluation/Small_library_spearman_gain_bars.png", dpi=300, bbox_inches="tight")
+    plt.savefig("figures/evaluation/Small_library_spearman_gain_bars.svg", format="svg", bbox_inches="tight")
+    plt.savefig(os.path.join(exp_fig_dir, "Small_library_spearman_gain_bars.png"), dpi=300, bbox_inches="tight")
+    plt.savefig(os.path.join(exp_fig_dir, "Small_library_spearman_gain_bars.svg"), format="svg", bbox_inches="tight")
+    plt.close()
+
+    # 3. Pearson Quantitative Comparison Bar Plot
+    fig, ax = plt.subplots(figsize=(10, 5.5), dpi=300)
+    bars_p1 = ax.bar(x - width/2, df_res["DeepPrime-base (Pearson r)"], width, label="DeepPrime (Base Ensemble)", color="#7f8c8d", alpha=0.85, edgecolor="black")
+    bars_p2 = ax.bar(x + width/2, df_res["DeepPrime6 (Pearson r)"], width, label="DeepPrime6 (Fine-Tuned)", color="#d35400", alpha=0.9, edgecolor="black")
+
+    for idx, (b1, b2) in enumerate(zip(bars_p1, bars_p2)):
+        h1 = b1.get_height()
+        h2 = b2.get_height()
+        delta = h2 - h1
+        ax.annotate(f"{h1:.3f}", xy=(b1.get_x() + b1.get_width()/2, h1), xytext=(0, 3),
+                    textcoords="offset points", ha="center", va="bottom", fontsize=8.5)
+        ax.annotate(f"{h2:.3f}", xy=(b2.get_x() + b2.get_width()/2, h2), xytext=(0, 3),
+                    textcoords="offset points", ha="center", va="bottom", fontsize=8.5, weight="bold")
+        pct_gain = (delta / h1) * 100
+        ax.annotate(f"$\\Delta r = +{delta:.3f}$\n(+{pct_gain:.0f}%)", xy=(b2.get_x() + b2.get_width()/2, h2 + 0.05),
+                    ha="center", va="bottom", fontsize=8, color="#b03a2e", weight="bold")
+
+    ax.set_ylabel("Pearson Correlation ($r$)", fontsize=13, weight="bold")
+    ax.set_title("Quantitative Linear Accuracy: DeepPrime (Base) vs DeepPrime6 on Small Library", fontsize=14, weight="bold", pad=12)
+    ax.set_xticks(x)
+    ax.set_xticklabels([t.replace(" (", "\n(") for t in df_res["Evaluation Target"]], fontsize=11)
+    ax.set_ylim(0, 0.95)
+    ax.legend(frameon=True, fontsize=11, loc="upper left")
+    sns.despine()
+    plt.tight_layout()
+
+    plt.savefig("figures/evaluation/Small_library_pearson_gain_bars.png", dpi=300, bbox_inches="tight")
+    plt.savefig("figures/evaluation/Small_library_pearson_gain_bars.svg", format="svg", bbox_inches="tight")
+    plt.savefig(os.path.join(exp_fig_dir, "Small_library_pearson_gain_bars.png"), dpi=300, bbox_inches="tight")
+    plt.savefig(os.path.join(exp_fig_dir, "Small_library_pearson_gain_bars.svg"), format="svg", bbox_inches="tight")
+    plt.close()
+
+    # 4. Dual-Metric Side-by-Side Plot (Panel A: Pearson, Panel B: Spearman)
+    fig, (ax_r, ax_rho) = plt.subplots(1, 2, figsize=(18, 5.5), dpi=300)
+
+    # Panel A: Pearson
+    ax_r.bar(x - width/2, df_res["DeepPrime-base (Pearson r)"], width, label="DeepPrime (Base)", color="#7f8c8d", alpha=0.85, edgecolor="black")
+    ax_r.bar(x + width/2, df_res["DeepPrime6 (Pearson r)"], width, label="DeepPrime6", color="#d35400", alpha=0.9, edgecolor="black")
+    for idx, row in df_res.iterrows():
+        delta = row["DeepPrime6 (Pearson r)"] - row["DeepPrime-base (Pearson r)"]
+        ax_r.annotate(f"+{delta:.3f}", xy=(x[idx] + width/2, row["DeepPrime6 (Pearson r)"] + 0.02),
+                      ha="center", va="bottom", fontsize=9, color="#900c3f", weight="bold")
+    ax_r.set_ylabel("Pearson Correlation ($r$)", fontsize=13, weight="bold")
+    ax_r.set_title("A. Linear Calibration & Quantitative Accuracy ($r$)", fontsize=14, weight="bold")
+    ax_r.set_xticks(x)
+    ax_r.set_xticklabels([t.replace(" (", "\n(") for t in df_res["Evaluation Target"]], fontsize=10)
+    ax_r.set_ylim(0, 0.90)
+    ax_r.legend(frameon=True, fontsize=11, loc="upper left")
+    sns.despine(ax=ax_r)
+
+    # Panel B: Spearman
+    ax_rho.bar(x - width/2, df_res["DeepPrime-base (Spearman rho)"], width, label="DeepPrime (Base)", color="#7f8c8d", alpha=0.85, edgecolor="black")
+    ax_rho.bar(x + width/2, df_res["DeepPrime6 (Spearman rho)"], width, label="DeepPrime6", color="#2980b9", alpha=0.9, edgecolor="black")
+    for idx, row in df_res.iterrows():
+        delta = row["DeepPrime6 (Spearman rho)"] - row["DeepPrime-base (Spearman rho)"]
+        sign = "+" if delta >= 0 else ""
+        color = "#1f618d" if delta >= 0 else "#555555"
+        ax_rho.annotate(f"{sign}{delta:.3f}", xy=(x[idx] + width/2, row["DeepPrime6 (Spearman rho)"] + 0.02),
+                        ha="center", va="bottom", fontsize=9, color=color, weight="bold")
+    ax_rho.set_ylabel("Spearman Correlation ($\\rho$)", fontsize=13, weight="bold")
+    ax_rho.set_title("B. Rank Ordering Consistency ($\\rho$)", fontsize=14, weight="bold")
+    ax_rho.set_xticks(x)
+    ax_rho.set_xticklabels([t.replace(" (", "\n(") for t in df_res["Evaluation Target"]], fontsize=10)
+    ax_rho.set_ylim(0, 0.90)
+    ax_rho.legend(frameon=True, fontsize=11, loc="upper right")
+    sns.despine(ax=ax_rho)
+
+    plt.suptitle("Small Library Generalization: PE6 Fine-Tuning Impact Across PE6 & PE7 Systems", fontsize=16, weight="bold", y=1.02)
+    plt.tight_layout()
+
+    plt.savefig("figures/evaluation/Small_library_dual_metric_bars.png", dpi=300, bbox_inches="tight")
+    plt.savefig("figures/evaluation/Small_library_dual_metric_bars.svg", format="svg", bbox_inches="tight")
+    plt.savefig(os.path.join(exp_fig_dir, "Small_library_dual_metric_bars.png"), dpi=300, bbox_inches="tight")
+    plt.savefig(os.path.join(exp_fig_dir, "Small_library_dual_metric_bars.svg"), format="svg", bbox_inches="tight")
+    plt.close()
+
+    print(f"Saved all bar plots (Pearson, Spearman, Dual-Metric) to figures/evaluation/ and {exp_fig_dir}", flush=True)
 
 if __name__ == "__main__":
     main()
