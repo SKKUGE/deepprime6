@@ -15,7 +15,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import GroupShuffleSplit
 
-DEFAULT_SRC = os.environ.get("PE6_RAW_PARQUET", "data/processed_data.parquet" if os.path.exists("data/processed_data.parquet") else "/home/work/workdir/pe6-deep/data/pe6/processed_data.parquet")
+DEFAULT_SRC = os.environ.get("PE6_RAW_PARQUET", os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "data", "processed_data.parquet"))
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deduplicate PE6 dataset by unique pegRNA design.")
