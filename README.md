@@ -1,5 +1,7 @@
 # DeepPrime6
 
+[https://doi.org/10.5281/zenodo.22720438](https://doi.org/10.5281/zenodo.22720438)
+
 Official repository for DeepPrime6: Deep learning-based prediction of prime editing efficiencies of PE6 editors.
 
 
@@ -122,7 +124,7 @@ The following table lists the model weights reported in the paper. You can use t
 | PE6b         |         `src/models/weights/DeepPrime6-weights/pe6b_mainft.ckpt` |
 | PE6c         |         `src/models/weights/DeepPrime6-weights/pe6c_mainft.ckpt` |
 
-Or you can find the exact same checkpoints on the [release](https://github.com/SKKUGE/deepprime6/releases/tag/v1.1) section.
+Or you can find the exact same checkpoints on the [release](https://github.com/SKKUGE/deepprime6/releases/tag/v1.2) section.
 
 
 ## Customizing Configurations
@@ -224,4 +226,8 @@ Copy `.env.example` to `.env` and fill in your credentials:
 
 - No secrets are committed; all credentials are loaded from environment variables.
 - Checkpoints and Hydra run outputs are written under `logs/` (git-ignored).
+
+## Citation
+
+Ju-young Shin. (2026). SKKUGE/deepprime6: v1.2-submission (Version v1.2) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.22720438
 
