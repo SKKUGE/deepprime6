@@ -2,6 +2,7 @@
 
 Official repository for DeepPrime6: Deep learning-based prediction of prime editing efficiencies of PE6 editors.
 
+
 ## Environment
 
 ### Option A: conda
@@ -120,6 +121,9 @@ The following table lists the model weights reported in the paper. You can use t
 | PEmaxdRNaseH | `src/models/weights/DeepPrime6-weights/pemaxdrnaseh_mainft.ckpt` |
 | PE6b         |         `src/models/weights/DeepPrime6-weights/pe6b_mainft.ckpt` |
 | PE6c         |         `src/models/weights/DeepPrime6-weights/pe6c_mainft.ckpt` |
+
+Or you can find the exact same checkpoints on the [release](https://github.com/SKKUGE/deepprime6/releases/tag/v1.1) section.
+
 
 ## Customizing Configurations
 
