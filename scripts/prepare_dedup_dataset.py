@@ -59,7 +59,7 @@ def main():
     print(f"Deduplicated dataset shape: {df_dedup.shape} (from {df.shape[0]} rows)")
 
     # Save deduplicated parquet
-    os.makedirs(os.path.dirname(args.output_parquet), exist_ok=True)
+os.makedirs(os.path.dirname(args.output_parquet) or ".", exist_ok=True)
     df_dedup.to_parquet(args.output_parquet)
     print(f"Saved deduplicated dataset to {args.output_parquet}")
 
