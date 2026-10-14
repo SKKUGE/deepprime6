@@ -48,5 +48,48 @@ def test_extract_target_features_fwd_strand():
     assert d['pegRNA_strand'] == "+"
 
 def test_extract_target_features_rev_strand():
-    # We test if the reverse strand PAM correctly reverses the spacer and identifies the right edit index.
-    pass
+    # Construct a WT context with a PAM on the reverse strand (i.e. CCN on forward strand)
+    # Target length 200bp, edit at index 100 ('A' -> 'T').
+    from Bio.Seq import reverse_complement
+    import pandas as pd
+    
+    # Target spacer on reverse complement
+    rc_spacer = "GCTAGCTAGCTAGCTAGCTA"
+    rc_pam = "AGG"
+    
+    # Construct reverse complement target context first
+    prefix_rc = "A" * 77
+    suffix_rc = "T" + "A" * 99  # edit at index 100 in rc
+    rc_wt_ctx = prefix_rc + rc_spacer + rc_pam + suffix_rc
+    assert len(rc_wt_ctx) == 200
+    
+    # Forward strand is RC of rc_wt_ctx
+    wt_ctx = reverse_complement(rc_wt_ctx)
+    ed_ctx = wt_ctx[:100] + "T" + wt_ctx[101:]
+    
+    designs = extract_target_features(
+        wt_ctx, ed_ctx, "A", "T", "-",
+        pbs_len=13, rtt_len=15
+    )
+    
+    rev_designs = [d for d in designs if d['pegRNA_strand'] == '-']
+    assert len(rev_designs) > 0
+    d = rev_designs[0]
+    assert d['spacer'] == rc_spacer
+    assert d['PAM'] == rc_pam
+    assert d['pegRNA_strand'] == "-"
+    
+    # Now verify map_to_legacy_features produces correct reverse-complemented WideTargetSequence
+    score_spec = importlib.util.spec_from_file_location("score_deepprime", "src/pegrna_pipeline/06_score_deepprime.py")
+    score_mod = importlib.util.module_from_spec(score_spec)
+    score_spec.loader.exec_module(score_mod)
+    
+    row = dict(d)
+    row.update({'WT_context': wt_ctx, 'REF': 'A', 'ALT': 'T'})
+    ldf = score_mod.map_to_legacy_features(pd.DataFrame([row]))
+    
+    # WideTargetSequence must be reverse complement of WT_context for negative strand
+    assert ldf['WideTargetSequence'].iloc[0] == reverse_complement(wt_ctx)
+    # The spacer (Guide) must be present in the WideTargetSequence
+    assert d['spacer'] in ldf['WideTargetSequence'].iloc[0]
+

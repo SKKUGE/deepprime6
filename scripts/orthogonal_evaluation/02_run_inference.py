@@ -30,7 +30,10 @@ import torch
 from scipy.stats import spearmanr, pearsonr
 
 # Ensure project root is active working directory and in sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+cur = os.path.abspath(os.path.dirname(__file__))
+while cur != "/" and not os.path.exists(os.path.join(cur, "src")):
+    cur = os.path.dirname(cur)
+PROJECT_ROOT = cur
 os.chdir(PROJECT_ROOT)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -65,80 +68,35 @@ FEATURE_NAMES = [
 ]
 
 
-def load_deepprime_base_models(weights_dir, device):
-    """Loads all 20 pretrained checkpoints of the DeepPrime-base ensemble."""
-    files = sorted(glob.glob(os.path.join(weights_dir, "*.pt")))
-    if not files:
-        raise FileNotFoundError(f"No checkpoint files (.pt) found in {weights_dir}")
-    models = []
-    for f in files:
-        m = GeneInteractionModelVanilla()
-        m.load_state_dict(torch.load(f, map_location="cpu", weights_only=True), strict=True)
-        models.append(m.to(device).eval())
-    return models
-
-
-def predict_deepprime_base(models, g, b):
-    """Ensemble prediction averaging across 20 DeepPrime-base models."""
-    return torch.stack([m(g, b) for m in models], dim=0).mean(dim=0)
-
-
-def char_to_onehot_tensor(seqs_wt, seqs_ed, device):
-    """Encodes WT and edited sequences into (B, 4, 2, 74) tensor with 2*x-1 normalization."""
-    char_map = {"A": 0, "C": 1, "G": 2, "T": 3}
-    num_samples = len(seqs_wt)
-    g_arr = np.zeros((num_samples, 4, 2, 74), dtype=np.float32)
-    for idx, (wt, ed) in enumerate(zip(seqs_wt, seqs_ed)):
-        for col_idx, ch in enumerate(wt[:74]):
-            if ch in char_map:
-                g_arr[idx, char_map[ch], 0, col_idx] = 1.0
-        for col_idx, ch in enumerate(ed[:74]):
-            if ch in char_map:
-                g_arr[idx, char_map[ch], 1, col_idx] = 1.0
-    return (2 * torch.from_numpy(g_arr) - 1).float().to(device)
+from src.utils.inference import (
+    FEATURE_NAMES,
+    FEATURE_RENAME_MAP,
+    char_to_onehot_tensor,
+    prepare_biofeatures,
+    load_deepprime_base_models,
+    load_deepprime6_models,
+    predict_deepprime_base,
+    predict_deepprime6,
+)
 
 
 def run_deepprime_inference(seqs_wt, seqs_ed, biofeatures_df, dp_base_models, dp6_models, norm_mean_base, norm_std_base, norm_mean_pe6, norm_std_pe6, device, batch_size=4096):
-    """Runs DeepPrime-base and all DeepPrime6 models in GPU batches with canonical domain normalization."""
-    num_samples = len(seqs_wt)
-    b_norm_base = (biofeatures_df[FEATURE_NAMES] - norm_mean_base) / norm_std_base
-    b_tensor_base = torch.from_numpy(b_norm_base.fillna(0).values).float().to(device)
+    """Runs DeepPrime-base and all DeepPrime6 models via canonical codebase inference engine."""
+    g_batch = char_to_onehot_tensor(seqs_wt, seqs_ed, device)
+    b_base = prepare_biofeatures(biofeatures_df, norm_mean_base, norm_std_base, device)
+    b_pe6 = prepare_biofeatures(biofeatures_df, norm_mean_pe6, norm_std_pe6, device)
 
-    b_norm_pe6 = (biofeatures_df[FEATURE_NAMES] - norm_mean_pe6) / norm_std_pe6
-    b_tensor_pe6 = torch.from_numpy(b_norm_pe6.fillna(0).values).float().to(device)
-    
-    preds_dp_base = np.zeros(num_samples, dtype=np.float32)
-    preds_pe6a = np.zeros(num_samples, dtype=np.float32)
-    preds_pe6b = np.zeros(num_samples, dtype=np.float32)
-    preds_pe6c = np.zeros(num_samples, dtype=np.float32)
-    preds_drnaseh = np.zeros(num_samples, dtype=np.float32)
-    
-    print(f"  Running DeepPrime & DeepPrime6 forward passes on {num_samples:,} samples...", flush=True)
-    with torch.no_grad():
-        for start_idx in range(0, num_samples, batch_size):
-            end_idx = min(start_idx + batch_size, num_samples)
-            wt_sub = seqs_wt[start_idx:end_idx]
-            ed_sub = seqs_ed[start_idx:end_idx]
-            g_batch = char_to_onehot_tensor(wt_sub, ed_sub, device)
-            b_batch_base = b_tensor_base[start_idx:end_idx]
-            b_batch_pe6 = b_tensor_pe6[start_idx:end_idx]
-            
-            # DeepPrime Base (20 models average with base normalization)
-            preds_dp_base[start_idx:end_idx] = predict_deepprime_base(dp_base_models, g_batch, b_batch_base).cpu().numpy().flatten()
-            
-            # DeepPrime6 Models (with canonical PE6 normalization)
-            preds_pe6a[start_idx:end_idx] = dp6_models["pe6a"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
-            preds_pe6b[start_idx:end_idx] = dp6_models["pe6b"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
-            preds_pe6c[start_idx:end_idx] = dp6_models["pe6c"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
-            preds_drnaseh[start_idx:end_idx] = dp6_models["drnaseh"]((g_batch, b_batch_pe6)).cpu().numpy().flatten()
-            
+    pred_base = predict_deepprime_base(dp_base_models, g_batch, b_base, batch_size=batch_size)
+    pred_dp6 = predict_deepprime6(dp6_models, g_batch, b_pe6, batch_size=batch_size)
+
     return {
-        "pred_dp_base": preds_dp_base,
-        "pred_dp6_pe6a": preds_pe6a,
-        "pred_dp6_pe6b": preds_pe6b,
-        "pred_dp6_pe6c": preds_pe6c,
-        "pred_dp6_drnaseh": preds_drnaseh
+        "pred_dp_base": pred_base,
+        "pred_dp6_pe6a": pred_dp6["pe6a"],
+        "pred_dp6_pe6b": pred_dp6["pe6b"],
+        "pred_dp6_pe6c": pred_dp6["pe6c"],
+        "pred_dp6_drnaseh": pred_dp6["drnaseh"],
     }
+
 
 
 def compute_metrics(y_true, y_pred):
@@ -171,12 +129,7 @@ def main():
     dp_base_models = load_deepprime_base_models("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428", device)
 
     print("  Loading DeepPrime6 4 checkpoints...", flush=True)
-    dp6_models = {
-        "pe6a": PE6DeepPrimeModule.load_from_checkpoint(os.path.join(ckpt_dir, "pe6a_mainft.ckpt"), strict=False).to(device).eval(),
-        "pe6b": PE6DeepPrimeModule.load_from_checkpoint(os.path.join(ckpt_dir, "pe6b_mainft.ckpt"), strict=False).to(device).eval(),
-        "pe6c": PE6DeepPrimeModule.load_from_checkpoint(os.path.join(ckpt_dir, "pe6c_mainft.ckpt"), strict=False).to(device).eval(),
-        "drnaseh": PE6DeepPrimeModule.load_from_checkpoint(os.path.join(ckpt_dir, "pemaxdrnaseh_mainft.ckpt"), strict=False).to(device).eval(),
-    }
+    dp6_models = load_deepprime6_models(ckpt_dir, device, is_scratch=False)
 
     print("  Loading PRIDICT2.0 model...", flush=True)
     pr_models = load_pridict_model(run_ids=[0])

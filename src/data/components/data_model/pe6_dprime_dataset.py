@@ -23,15 +23,37 @@ class PE6DeepPrimeDataset(Dataset):
             len(datafilter["PE_types"]) < 2
         ), "The current implementation only supports one PE type"
         t = datafilter["PE_types"][0]
-        filtering_results = []
-        for r in AVG_PAIR.get(t, []):
-            if r in data.columns:
-                filtering_results.append(data[r] > read_count_filter)
+        if read_count_filter > 0:
+            mask = pd.Series(True, index=data.index)
+            # 1. Total read counts >= read_count_filter for both replicates in AVG_PAIR
+            for r in AVG_PAIR.get(t, []):
+                if r in data.columns:
+                    mask = mask & (data[r] >= read_count_filter)
 
-        # It returns False if all replicates are 0.
-        # from functools import reduce
-        # filtered_data = data.loc[reduce(np.logical_or, filtering_results)]
-        filtered_data = data  # AB Test: No filtering if all replicates are 0
+            # 2. Background noise filter <= 5.0% for the control batches relevant to this PE system
+            batches_in_t = set()
+            for r in AVG_PAIR.get(t, []):
+                if "KMC" in r:
+                    batches_in_t.add("HEK-M-CTRL-7D-KMC")
+                elif "M2" in r:
+                    batches_in_t.add("HEK-M2-CTRL-7D-UAR")
+                elif "UAR" in r:
+                    batches_in_t.add("HEK-M-CTRL-7D-UAR")
+
+            for ctrl_prefix in batches_in_t:
+                ed_col = f"{ctrl_prefix}+edited_read_counts"
+                un_col = f"{ctrl_prefix}+unedited_read_counts"
+                if ed_col in data.columns and un_col in data.columns:
+                    ctrl_tot = data[ed_col] + data[un_col]
+                    bg = (data[ed_col] / ctrl_tot.replace(0, np.nan) * 100).fillna(0)
+                    mask = mask & (bg <= 5.0)
+
+            if t in data.columns:
+                mask = mask & data[t].notna()
+
+            filtered_data = data.loc[mask].copy()
+        else:
+            filtered_data = data
 
         # Labels
         self._label_col: List[str] = datafilter["PE_types"]

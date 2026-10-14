@@ -37,7 +37,7 @@ RENAME_MAP_FOR_VIS = {
     "indiv_vis+HEK-S-1-14D-KMC%": "PEmax-KMC",
     "indiv_vis+HEK-S-2-14D-KMC%": "PEmaxdRNaseH-KMC",
     "indiv_vis+HEK-S-3-14D-KMC%": "PE6a(+PEmaxCas9)-KMC",
-    "indiv_vis+HEK-S-4-14D-KMC%": "PEb(+PEmaxCas9)-KMC",
+    "indiv_vis+HEK-S-4-14D-KMC%": "PE6b(+PEmaxCas9)-KMC",
     "indiv_vis+HEK-S-5-14D-KMC%": "PE6c(+PEmaxCas9)-KMC",
     "indiv_vis+HEK-S-6-14D-KMC%": "PE6d(+PEmaxCas9)-KMC",
     "indiv_vis+HEK-S-10-14D-KMC%": "PE6ec-KMC",
@@ -49,7 +49,7 @@ RENAME_MAP_FOR_VIS = {
     "indiv_vis+HEK-S-1-14D-UAR%": "PEmax-UAR",
     "indiv_vis+HEK-S-2-14D-UAR%": "PEmaxdRNaseH-UAR",
     "indiv_vis+HEK-S-3-14D-UAR%": "PE6a(+PEmaxCas9)-UAR",
-    "indiv_vis+HEK-S-4-14D-UAR%": "PEb(+PEmaxCas9)-UAR",
+    "indiv_vis+HEK-S-4-14D-UAR%": "PE6b(+PEmaxCas9)-UAR",
     "indiv_vis+HEK-S-5-14D-UAR%": "PE6c(+PEmaxCas9)-UAR",
     "indiv_vis+HEK-S-6-14D-UAR%": "PE6d(+PEmaxCas9)-UAR",
     "indiv_vis+HEK-S-10-14D-UAR%": "PE6ec-UAR",
@@ -71,7 +71,7 @@ RENAME_MAP_FOR_VIS = {
     "comb_vis+HEK-S-1-14D%": "PEmax",
     "comb_vis+HEK-S-2-14D%": "PEmaxdRNaseH",
     "comb_vis+HEK-S-3-14D%": "PE6a(+PEmaxCas9)",
-    "comb_vis+HEK-S-4-14D%": "PEb(+PEmaxCas9)",
+    "comb_vis+HEK-S-4-14D%": "PE6b(+PEmaxCas9)",
     "comb_vis+HEK-S-5-14D%": "PE6c(+PEmaxCas9)",
     "comb_vis+HEK-S-6-14D%": "PE6d(+PEmaxCas9)",
     "comb_vis+HEK-S-10-14D%": "PE6ec",
@@ -111,78 +111,54 @@ RENAME_MAP_FOR_VIS = {
 
 AVG_PAIR = {
     "PEmax": (
-        # "HEK-M-1-7D-KMC+total_read_counts",
         "HEK-M-1-7D-UAR+total_read_counts",
         "HEK-M2-1-7D-UAR+total_read_counts",
     ),
     "PEmaxdRNaseH": (
-        # "HEK-M-2-7D-KMC+total_read_counts",
         "HEK-M-2-7D-UAR+total_read_counts",
         "HEK-M2-2-7D-UAR+total_read_counts",
     ),
     "PE6a(+PEmaxCas9)": (
-        # "HEK-M-3-7D-KMC+total_read_counts",
         "HEK-M-3-7D-UAR+total_read_counts",
         "HEK-M2-3-7D-UAR+total_read_counts",
     ),
     "PE6b(+PEmaxCas9)": (
-        # "HEK-M-4-7D-KMC+total_read_counts",
         "HEK-M-4-7D-UAR+total_read_counts",
         "HEK-M2-4-7D-UAR+total_read_counts",
     ),
     "PE6c(+PEmaxCas9)": (
-        # "HEK-M-5-7D-KMC+total_read_counts",
         "HEK-M-5-7D-UAR+total_read_counts",
         "HEK-M2-5-7D-UAR+total_read_counts",
     ),
     "PE6d(+PEmaxCas9)": (
-        # "HEK-M-6-7D-KMC+total_read_counts",
         "HEK-M-6-7D-UAR+total_read_counts",
         "HEK-M2-6-7D-UAR+total_read_counts",
     ),
     "PE6e(+dRNaseH)": (
-        # "HEK-M-7-7D-KMC+total_read_counts",
+        "HEK-M-7-7D-KMC+total_read_counts",
         "HEK-M-7-7D-UAR+total_read_counts",
     ),
     "PE6f(+dRNaseH)": (
-        # "HEK-M-8-7D-KMC+total_read_counts",
+        "HEK-M-8-7D-KMC+total_read_counts",
         "HEK-M-8-7D-UAR+total_read_counts",
     ),
     "PE6g(+dRNaseH)": (
-        # "HEK-M-9-7D-KMC+total_read_counts",
+        "HEK-M-9-7D-KMC+total_read_counts",
         "HEK-M-9-7D-UAR+total_read_counts",
     ),
-    # "PEmaxdRNaseH-avg": (
-    #     "PEmaxdRNaseH-#1",
-    #     "PEmaxdRNaseH-#2",
-    #     "PEmaxdRNaseH-#3",
-    # ),
-    # "PE6b-avg": (
-    #     "PE6b-#1",
-    #     "PE6b-#2",
-    #     "PE6b-#3",
-    # ),
-    # "PE6c-avg": (
-    #     "PE6c-#1",
-    #     "PE6c-#2",
-    #     "PE6c-#3",
-    # ),
-    # "PE7maxdRNaseH-avg": (
-    #     "PE7maxdRNaseH-#1",
-    #     "PE7maxdRNaseH-#2",
-    #     "PE7maxdRNaseH-#3",
-    # ),
-    # "PE7b-avg": (
-    #     "PE7b-#1",
-    #     "PE7b-#2",
-    #     "PE7b-#3",
-    # ),
-    # "PE7c-avg": (
-    #     "PE7c-#1",
-    #     "PE7c-#2",
-    #     "PE7c-#3",
-    # ),
 }
+
+# Derived normalized editing efficiency column pairs corresponding strictly to AVG_PAIR
+EFF_PAIR = {
+    k: tuple(
+        c.replace("+total_read_counts", "+pe_ratio_%")
+        if c.startswith("Normalized+")
+        else f"Normalized+{c.replace('+total_read_counts', '+pe_ratio_%')}"
+        for c in v
+    )
+    for k, v in AVG_PAIR.items()
+}
+
 
 
 def exp_transform(x: torch.Tensor) -> torch.Tensor:

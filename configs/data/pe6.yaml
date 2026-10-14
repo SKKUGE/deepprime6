@@ -18,9 +18,9 @@ dataloader:
 skip_preprocessing: False # Skip preprocessing if the data is already preprocessed and saved in the data_dir
 
 dataset:
-    train_read_count_filter: 500
-    val_read_count_filter: 500
-    test_read_count_filter: 500
+    train_read_count_filter: 200
+    val_read_count_filter: 200
+    test_read_count_filter: 200
     norm_mean_path: null
     norm_std_path: null
 csv_path: null

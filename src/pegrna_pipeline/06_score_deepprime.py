@@ -9,7 +9,7 @@ import glob
 import subprocess
 
 # Ensure we can import from src
-sys.path.append("/home/work/workdir/deepprime6-genomebiol-revision")
+from Bio.Seq import Seq, reverse_complement
 from src.data.components.pe6_preprocess_data import preprocess_data
 
 # Ensure PRIDICT2 path for PE6DeepPrimeModule
@@ -28,7 +28,10 @@ def parse_args():
 def map_to_legacy_features(df):
     """Maps new pipeline columns to legacy ML columns expected by pe6_preprocess_data."""
     ldf = df.copy()
-    ldf['WideTargetSequence'] = ldf['WT_context']
+    ldf['WideTargetSequence'] = [
+        str(reverse_complement(row['WT_context'])) if row['pegRNA_strand'] == '-' else row['WT_context']
+        for _, row in ldf.iterrows()
+    ]
     ldf['ContextSeqUsed'] = 'WideTargetSequence'
     ldf['Guide'] = ldf['spacer']
     ldf['leading G'] = ""
@@ -112,8 +115,8 @@ def main():
     biofeatures_raw = feat_df[standard_features].copy()
     
     # Normalize features using the provided DP_variant mean and std
-    norm_mean = pd.read_csv(os.path.join(dp_ckpt_dir, "mean.csv"), index_col=0).squeeze()
-    norm_std = pd.read_csv(os.path.join(dp_ckpt_dir, "std.csv"), index_col=0).squeeze()
+    norm_mean = pd.read_csv(os.path.join(dp_ckpt_dir, "mean.csv"), index_col=0, header=None).squeeze()
+    norm_std = pd.read_csv(os.path.join(dp_ckpt_dir, "std.csv"), index_col=0, header=None).squeeze()
     
     # Match columns carefully. The mean.csv uses old DP names.
     feature_rename_map = {
@@ -155,6 +158,8 @@ def main():
         "trainer=gpu",
         f"data.csv_path={temp_input}",
         "ckpt_path=null",
+        f"data.dataset.norm_mean_path={os.path.join(dp_ckpt_dir, 'mean.csv')}",
+        f"data.dataset.norm_std_path={os.path.join(dp_ckpt_dir, 'std.csv')}",
         f"model.prediction_save_path={temp_output}",
         "data.skip_preprocessing=True",
         "data.batch_size=8192",

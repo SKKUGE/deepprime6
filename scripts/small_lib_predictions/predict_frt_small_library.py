@@ -21,7 +21,10 @@ import pandas as pd
 import torch
 
 # Ensure repo root and PRIDICT2 are in sys.path
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+cur = os.path.abspath(os.path.dirname(__file__))
+while cur != "/" and not os.path.exists(os.path.join(cur, "src")):
+    cur = os.path.dirname(cur)
+REPO_ROOT = cur
 os.chdir(REPO_ROOT)
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
@@ -30,32 +33,21 @@ PRIDICT_DIR = os.path.join(REPO_ROOT, "PRIDICT2")
 if PRIDICT_DIR not in sys.path:
     sys.path.insert(0, PRIDICT_DIR)
 
-from src.models.pe6_module_dp_only import PE6DeepPrimeModule
-from src.models.components.dprime import GeneInteractionModelVanilla
 from src.data.components.pe6_preprocess_data import preprocess_data
+from src.utils.inference import (
+    char_to_onehot_tensor,
+    prepare_biofeatures,
+    load_deepprime_base_models,
+    load_deepprime6_models,
+    predict_deepprime_base,
+    predict_deepprime6,
+)
 from src.utils.predict_pridict2 import (
     load_pridict_model,
     deeppridict,
     compute_average_predictions,
     extract_single_pegRNA_features
 )
-
-
-def char_to_onehot_tensor(seqs_wt, seqs_ed, device):
-    """Encodes WT and edited sequences into (B, 4, 2, 74) tensor with 2*x-1 normalization.
-    Masked 'x' / unknown characters map to 0 in one-hot, which translates to -1.0.
-    """
-    char_map = {"A": 0, "C": 1, "G": 2, "T": 3}
-    num_samples = len(seqs_wt)
-    g_arr = np.zeros((num_samples, 4, 2, 74), dtype=np.float32)
-    for idx, (wt, ed) in enumerate(zip(seqs_wt, seqs_ed)):
-        for col_idx, ch in enumerate(wt[:74]):
-            if ch in char_map:
-                g_arr[idx, char_map[ch], 0, col_idx] = 1.0
-        for col_idx, ch in enumerate(ed[:74]):
-            if ch in char_map:
-                g_arr[idx, char_map[ch], 1, col_idx] = 1.0
-    return (2 * torch.from_numpy(g_arr) - 1).float().to(device)
 
 
 def main():
@@ -151,27 +143,9 @@ def main():
     processed_dp = preprocess_data(data=dp_prep_df)
     print(f"  Feature extraction complete for {len(processed_dp)} rows.")
 
-    # Prepare biofeatures
-    feature_rename_map = {
-        "PBS_len": "PBSlen", "RTT_len": "RTlen", "RT-PBS_len": "RT-PBSlen",
-        "Tm1_PBS": "Tm1", "Tm2_RTT_cTarget_sameLength": "Tm2", "Tm3_RTT_cTarget_replaced": "Tm2new",
-        "Tm4_cDNA_PAM-oppositeTarget": "Tm3", "Tm5_RTT_cDNA": "Tm4", "deltaTm_Tm4-Tm2": "TmD",
-        "GC_count_PBS": "nGCcnt1", "GC_count_RTT": "nGCcnt2", "GC_count_RT-PBS": "nGCcnt3",
-        "GC_contents_PBS": "fGCcont1", "GC_contents_RTT": "fGCcont2", "GC_contents_RT-PBS": "fGCcont3",
-        "MFE_RT-PBS-polyT": "MFE3", "MFE_Spacer": "MFE4",
-    }
-    dp_ckpt_dir = "src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428"
-    norm_mean_base = pd.read_csv(f"{dp_ckpt_dir}/mean.csv", header=None, index_col=0).squeeze()
-    norm_std_base = pd.read_csv(f"{dp_ckpt_dir}/std.csv", header=None, index_col=0).squeeze()
-
-    dp6_dir = "src/models/weights/DeepPrime6-weights"
-    norm_mean_pe6 = pd.read_csv(os.path.join(dp6_dir, "pe6_mean.csv"), header=None, index_col=0).squeeze()
-    norm_std_pe6 = pd.read_csv(os.path.join(dp6_dir, "pe6_std.csv"), header=None, index_col=0).squeeze()
-
-    bio_renamed = processed_dp.rename(columns=feature_rename_map)
-    bio_ordered = bio_renamed[norm_mean_base.index]
-    norm_bio_base = ((bio_ordered - norm_mean_base) / norm_std_base).fillna(0).values
-    norm_bio_pe6 = ((bio_ordered - norm_mean_pe6) / norm_std_pe6).fillna(0).values
+    # Prepare biofeatures and one-hot tensors via codebase canonical engine
+    b_tensor_base = prepare_biofeatures(processed_dp, "base", device=device)
+    b_tensor_pe6 = prepare_biofeatures(processed_dp, "pe6", device=device)
 
     # Sequence encoding
     g_tensor = char_to_onehot_tensor(
@@ -179,40 +153,25 @@ def main():
         processed_dp["Masked_EditSeq"].tolist(),
         device
     )
-    b_tensor_base = torch.from_numpy(norm_bio_base).float().to(device)
-    b_tensor_pe6 = torch.from_numpy(norm_bio_pe6).float().to(device)
 
-    # Load DeepPrime-base 20 models (Strict original GeneInteractionModelVanilla)
-    print("  Loading 20 DeepPrime-base ensemble models...", flush=True)
-    base_files = sorted(glob.glob(f"{dp_ckpt_dir}/*.pt"))
-    base_models = []
-    for f in base_files:
-        m = GeneInteractionModelVanilla()
-        m.load_state_dict(torch.load(f, map_location="cpu", weights_only=True), strict=True)
-        base_models.append(m.to(device).eval())
+    # Load DeepPrime-base 20 models via codebase engine
+    print("  Loading 20 DeepPrime-base ensemble models via codebase engine...", flush=True)
+    base_models = load_deepprime_base_models(device=device)
 
-    # Load DeepPrime6 checkpoints
-    print("  Loading 4 DeepPrime6 checkpoints...", flush=True)
-    dp6_ckpts = {
-        "pred_dp6_pe6a": "pe6a_mainft.ckpt",
-        "pred_dp6_pe6b": "pe6b_mainft.ckpt",
-        "pred_dp6_pe6c": "pe6c_mainft.ckpt",
-        "pred_dp6_drnaseh": "pemaxdrnaseh_mainft.ckpt"
-    }
-    dp6_models = {}
-    for col_name, ckpt_file in dp6_ckpts.items():
-        ckpt_path = os.path.join(dp6_dir, ckpt_file)
-        m = PE6DeepPrimeModule.load_from_checkpoint(ckpt_path, strict=False).to(device).eval()
-        dp6_models[col_name] = m
+    # Load DeepPrime6 checkpoints via codebase engine
+    print("  Loading 4 DeepPrime6 checkpoints via codebase engine...", flush=True)
+    dp6_models = load_deepprime6_models(device=device, is_scratch=False)
 
     # Run DeepPrime & DeepPrime6 forward passes
     print("  Executing forward pass for DeepPrime-base and DeepPrime6...", flush=True)
-    with torch.no_grad():
-        preds_dp_base = torch.stack([m(g_tensor, b_tensor_base) for m in base_models], dim=0).mean(dim=0).cpu().numpy().flatten()
-        dp6_predictions = {
-            col_name: model((g_tensor, b_tensor_pe6)).cpu().numpy().flatten()
-            for col_name, model in dp6_models.items()
-        }
+    preds_dp_base = predict_deepprime_base(base_models, g_tensor, b_tensor_base)
+    dp6_raw_preds = predict_deepprime6(dp6_models, g_tensor, b_tensor_pe6)
+    dp6_predictions = {
+        "pred_dp6_pe6a": dp6_raw_preds["pe6a"],
+        "pred_dp6_pe6b": dp6_raw_preds["pe6b"],
+        "pred_dp6_pe6c": dp6_raw_preds["pe6c"],
+        "pred_dp6_drnaseh": dp6_raw_preds["drnaseh"],
+    }
 
     # Map back to res_df
     for i, orig_idx in enumerate(dp_indices):

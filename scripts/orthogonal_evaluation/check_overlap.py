@@ -15,8 +15,17 @@ import sys
 import pandas as pd
 import numpy as np
 
-# Ensure project root is active working directory and in sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+def find_project_root():
+    curr = os.path.abspath(os.path.dirname(__file__))
+    while curr != os.path.dirname(curr):
+        if os.path.exists(os.path.join(curr, ".project-root")) or (
+            os.path.exists(os.path.join(curr, "PRIDICT2")) and os.path.exists(os.path.join(curr, "src"))
+        ):
+            return curr
+        curr = os.path.dirname(curr)
+    return os.path.abspath(os.getcwd())
+
+PROJECT_ROOT = find_project_root()
 os.chdir(PROJECT_ROOT)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)

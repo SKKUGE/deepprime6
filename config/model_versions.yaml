@@ -12,6 +12,20 @@ models:
     representative_checkpoint: "ensemble_average"
     aggregation: "ensemble"
     preserve_individual_scores: true
+    norm_mean: "src/models/weights/DeepPrime6-weights/pe6_mean.csv"
+    norm_std: "src/models/weights/DeepPrime6-weights/pe6_std.csv"
+  deepprime6_scratch:
+    version: "v6.0-scratch"
+    checkpoints:
+      PE6a: "src/models/weights/DeepPrime6-scratch-weights/pe6a_scratch.ckpt"
+      PE6b: "src/models/weights/DeepPrime6-scratch-weights/pe6b_scratch.ckpt"
+      PE6c: "src/models/weights/DeepPrime6-scratch-weights/pe6c_scratch.ckpt"
+      PEmaxdRNaseH: "src/models/weights/DeepPrime6-scratch-weights/pemaxdrnaseh_scratch.ckpt"
+    representative_checkpoint: "ensemble_average"
+    aggregation: "ensemble"
+    preserve_individual_scores: true
+    norm_mean: "src/models/weights/DeepPrime6-scratch-weights/pe6_mean.csv"
+    norm_std: "src/models/weights/DeepPrime6-scratch-weights/pe6_std.csv"
   pridict2:
     version: "v2.0"
     checkpoint: "checkpoints/pridict2.pt"

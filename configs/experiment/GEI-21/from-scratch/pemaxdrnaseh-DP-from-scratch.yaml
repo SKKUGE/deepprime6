@@ -1,0 +1,44 @@
+# @package _global_
+
+defaults:
+- override /callbacks: default
+- override /data: pe6
+- override /model: pe6_deep_prime_only
+- override /trainer: default
+- override /logger: csv
+model:
+  model_weights:
+    baseline: null
+    requires_grad: true
+    num_ensemble: 20
+  optimizer:
+    lr: 0.0029748
+  scheduler:
+    T_0: 20
+    T_mult: 2
+  criterion:
+    scale_threshold: 2.9966
+    minimum_scaling_factor: 4.8892
+    alpha: 5.6729
+train: true
+test: true
+task_name: PEmaxdRNaseH-scratch
+tags:
+- maxdRNaseH-standalone-regression
+- maxdRNaseH-scratch
+- deep-prime-scratch
+- RQ3_Main_Train
+- GEI-21
+- from-scratch
+data:
+  data_dir: ${paths.data_dir}/processed_data_dedup.parquet
+  batch_size: 64
+  skip_preprocessing: true
+  datasplit:
+    group_column: Guide
+    test_size: 0.2
+    val_size: 0.25
+  datafilter:
+    PE_types:
+    - PEmaxdRNaseH
+seed: 1234

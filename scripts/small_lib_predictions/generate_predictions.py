@@ -27,10 +27,13 @@ def run_deepprime_predictions(df, output_dir):
     
     biofeatures_raw = df[standard_features].copy()
     
+    # NOTE: This script is a legacy sequential prototype.
+    # The canonical, high-performance FRT evaluation script is:
+    # scripts/small_lib_predictions/predict_frt_small_library.py
     # Load normalization stats from DeepPrime base model
     dp_ckpt_dir = "src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428"
-    norm_mean = pd.read_csv(os.path.join(dp_ckpt_dir, "mean.csv"), index_col=0).squeeze()
-    norm_std = pd.read_csv(os.path.join(dp_ckpt_dir, "std.csv"), index_col=0).squeeze()
+    norm_mean = pd.read_csv(os.path.join(dp_ckpt_dir, "mean.csv"), index_col=0, header=None).squeeze()
+    norm_std = pd.read_csv(os.path.join(dp_ckpt_dir, "std.csv"), index_col=0, header=None).squeeze()
     
     feature_rename_map = {
         "PBS_len": "PBSlen", "RTT_len": "RTlen", "RT-PBS_len": "RT-PBSlen",

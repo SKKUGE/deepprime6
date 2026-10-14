@@ -47,6 +47,8 @@ def main():
         mv = yaml.safe_load(f)
         
     dp6_checkpoints = mv['models']['deepprime6'].get('checkpoints', {})
+    norm_mean = mv['models']['deepprime6'].get('norm_mean', 'src/models/weights/DeepPrime6-weights/pe6_mean.csv')
+    norm_std = mv['models']['deepprime6'].get('norm_std', 'src/models/weights/DeepPrime6-weights/pe6_std.csv')
     
     # Add dummy target labels since PE6DeepPrimeDataset checks for them
     pe_types = [
@@ -84,6 +86,8 @@ def main():
             "trainer=gpu",
             f"data.csv_path={temp_input}",
             f"ckpt_path={ckpt_path}",
+            f"data.dataset.norm_mean_path={norm_mean}",
+            f"data.dataset.norm_std_path={norm_std}",
             f"data.datafilter.PE_types=[\"{target_pe_type}\"]",
             f"model.prediction_save_path={temp_output}",
             "data.skip_preprocessing=True",

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Orthogonal Dataset Benchmark: Step 1 - Stratified Target-Level Data Filtering & Leakage Elimination Module
+Orthogonal Benchmark: Step 1 - Stratified Target-Level Data Filtering & Leakage Elimination Module
+Author: DeepPrime6 Project
 
 Purpose:
 1. Loads official benchmark test sets:
@@ -24,8 +25,17 @@ import pandas as pd
 import numpy as np
 from Bio.Seq import reverse_complement
 
-# Ensure project root is active working directory and in sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+def find_project_root():
+    curr = os.path.abspath(os.path.dirname(__file__))
+    while curr != os.path.dirname(curr):
+        if os.path.exists(os.path.join(curr, ".project-root")) or (
+            os.path.exists(os.path.join(curr, "PRIDICT2")) and os.path.exists(os.path.join(curr, "src"))
+        ):
+            return curr
+        curr = os.path.dirname(curr)
+    return os.path.abspath(os.getcwd())
+
+PROJECT_ROOT = find_project_root()
 os.chdir(PROJECT_ROOT)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -264,8 +274,8 @@ def main():
             "Test Set Name": "PRIDICT2.0 Official Fold 0 Test Set",
             "Total Original Rows": len(p_test),
             "pe6 Target Locus Overlap (Forward + RC)": int(sum(p_in_pe6)),
-            "pe6 Exact pegRNA Overlap": 0,  # re-designed targets are used in the synthetic library
-            "PRIDICT2.0 Train Target Overlap": 0,   # re-designed targets are used in the synthetic library
+            "pe6 Exact pegRNA Overlap": 0,
+            "PRIDICT2.0 Train Target Overlap": 0,
             "DeepPrime-base Train Target Overlap": int(sum(p_in_dp_train)),
             "Total Excluded (Target Stratification)": int(p_test["in_bad_grp_id"].sum()),
             "Final Strictly Unseen Test Set (N)": len(p_test_filtered)

@@ -1,40 +1,38 @@
 # @package _global_
 
 defaults:
-    - override /callbacks: default
-    - override /data: pe6
-    - override /model: pe6_deep_prime_only
-    - override /trainer: default
-    - override /logger: csv
-
+- override /callbacks: default
+- override /data: pe6
+- override /model: pe6_deep_prime_only
+- override /trainer: default
+- override /logger: csv
 model:
-    model_weights:
-        requires_grad: True
-    optimizer:
-        lr: 0.006704676
-    scheduler:
-        T_0: 20
-        T_mult: 1
-    criterion:
-        scale_threshold: 3.9993
-        minimum_scaling_factor: 5.6530
-        alpha: 5.4140
-
-train: True
-test: True
-
-task_name: "PE6a-ft"
-tags: ["6a-ft", "deep-prime-FT"]
-seed: 2024
-
+  model_weights:
+    requires_grad: true
+  optimizer:
+    lr: 0.0073064
+  scheduler:
+    T_0: 10
+    T_mult: 1
+  criterion:
+    scale_threshold: 3.2564
+    minimum_scaling_factor: 5.1669
+    alpha: 6.3364
+train: true
+test: true
+task_name: PE6a-ft
+tags:
+- 6a-ft
+- deep-prime-FT
+seed: 42
 data:
-    data_dir: ${paths.data_dir}/processed_data_dedup.parquet
-    batch_size: 256
-    skip_preprocessing: True
-    datasplit:
-        group_column: "Guide"
-        test_size: 0.2
-        val_size: 0.25
-
-    datafilter:
-        PE_types: ["PE6a(+PEmaxCas9)"]
+  data_dir: ${paths.data_dir}/processed_data_dedup.parquet
+  batch_size: 128
+  skip_preprocessing: true
+  datasplit:
+    group_column: Guide
+    test_size: 0.2
+    val_size: 0.25
+  datafilter:
+    PE_types:
+    - PE6a(+PEmaxCas9)

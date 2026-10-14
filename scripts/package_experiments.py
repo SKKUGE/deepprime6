@@ -33,3 +33,12 @@ if __name__ == "__main__":
         "experiments/20261009_orthogonal_benchmark_leakage_stratification",
         "experiments/20261009_orthogonal_benchmark_leakage_stratification/orthogonal_benchmark_results.zip"
     )
+    make_zip(
+        "experiments/20261011_endogenous_rescore",
+        "experiments/20261011_endogenous_rescore/endogenous_rescore_results.zip"
+    )
+    make_zip(
+        "experiments/20261012_endogenous_site_evaluation",
+        "experiments/20261012_endogenous_site_evaluation/endogenous_site_evaluation_results.zip"
+    )
+
