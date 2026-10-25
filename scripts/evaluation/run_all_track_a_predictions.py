@@ -57,9 +57,11 @@ def main():
         include_pridict2=not has_cached_pridict,
         batch_size=2048
     )
-    if has_cached_pridict:
-        scored_df["pred_pridict2_hek"] = pr_cached["PRIDICT2_0_editing_Score_deep_HEK"].values
-        scored_df["pred_pridict2_k562"] = pr_cached["PRIDICT2_0_editing_Score_deep_K562"].values
+        cache_id = "ID" if "ID" in pr_cached.columns else "REF_ID"
+        cache = pr_cached.set_index(cache_id)
+        scored_ids = scored_df["ID"] if "ID" in scored_df.columns else pd.Series(scored_df.index, index=scored_df.index)
+        scored_df["pred_pridict2_hek"] = cache["PRIDICT2_0_editing_Score_deep_HEK"].reindex(scored_ids).to_numpy()
+        scored_df["pred_pridict2_k562"] = cache["PRIDICT2_0_editing_Score_deep_K562"].reindex(scored_ids).to_numpy()
 
     # Save individual prediction CSVs matching Track A format
     id_col = scored_df["ID"].values if "ID" in scored_df.columns else scored_df.index.values
