@@ -123,7 +123,7 @@ def main():
             "DeepPrime6_rho": round(rho_dp6, 4),
             "Delta_over_FT": round(delta_over_base, 4),
             "95%_CI_Delta_FT": f"[{np.percentile(diffs_base, 2.5):.4f}, {np.percentile(diffs_base, 97.5):.4f}]",
-            "P_val_Delta_FT_gt0": float((diffs_base > 0).mean()),
+            "Bootstrap_Probability_Delta_FT_gt0": float((diffs_base > 0).mean()),
             "One_Sided_P_val_Delta_FT": float((diffs_base <= 0).mean()),
             "Delta_over_PRIDICT2": round(delta_over_pr, 4),
             "95%_CI_Delta_PRIDICT2": f"[{np.percentile(diffs_pr, 2.5):.4f}, {np.percentile(diffs_pr, 97.5):.4f}]",
