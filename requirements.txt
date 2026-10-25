@@ -33,7 +33,7 @@ biopython>=1.81          # used in pe6_preprocess_data.py (Bio.Seq)
 viennarna>=2.5.0         # required by genet (genet.predict.PrimeEditor / RNA secondary structure)
 regex>=2023.12.25        # required by genet (genet.design / PAM search)
 editdistance>=0.8.1      # required by genet (genet.analysis / UMI & barcode distance)
-silence-tensorflow>=1.2.3# required by genet (genet.predict import / suppresses TF C++ logs)
+silence-tensorflow>=1.2.3 # required by genet (genet.predict import / suppresses TF C++ logs)
 pysam>=0.22.0            # used in ClinVar pegRNA pipeline (FASTA indexing)
 
 # --------- visualization & analysis --------- #

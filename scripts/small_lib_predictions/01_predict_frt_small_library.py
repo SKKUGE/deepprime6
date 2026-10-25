@@ -63,7 +63,9 @@ def main():
 
     # 1. Load input dataset
     print(f"\n[Step 1] Loading '{input_excel}'...", flush=True)
-    df_raw = pd.read_excel(input_excel, sheet_name=0)
+    xl = pd.ExcelFile(input_excel)
+    sheet_name = '정리' if '정리' in xl.sheet_names else 0
+    df_raw = xl.parse(sheet_name)
     total_rows = len(df_raw)
     print(f"Loaded {total_rows} pegRNA designs across {df_raw['Group'].nunique()} groups.", flush=True)
 
