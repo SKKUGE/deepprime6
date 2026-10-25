@@ -168,6 +168,8 @@ notebooks/wandb/**
 # Data protection (Ignore everything by default, allow specific files)
 data/*
 experiments/*
+figures/
+notebooks/plots/
 !data/sample_data.csv
 
 # Weights
@@ -177,8 +179,7 @@ src/models/weights/*
 !src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/
 *.png
 *.csv
+*.svg
 !src/models/weights/DeepPrime6-weights/*.csv
 !src/models/weights/DeepPrime6-scratch-weights/*.csv
-!figures/evaluation/*.csv
-!figures/evaluation/*.png
-!figures/evaluation/*.svg
+!src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/*.csv

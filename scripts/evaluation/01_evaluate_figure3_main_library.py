@@ -54,10 +54,10 @@ FEATURE_RENAME_MAP = {
 }
 
 PE_TARGET_COLS = {
-    "PEmaxdRNaseH": ["PEmaxdRNaseH", "comb_vis+HEK-M-2-7D%", "Normalized+3rep_HEK-M-2-7D+pe_ratio_%"],
-    "PE6a": ["PE6a(+PEmaxCas9)", "comb_vis+HEK-M-3-7D%", "Normalized+3rep_HEK-M-3-7D+pe_ratio_%"],
-    "PE6b": ["PE6b(+PEmaxCas9)", "comb_vis+HEK-M-4-7D%", "Normalized+3rep_HEK-M-4-7D+pe_ratio_%"],
-    "PE6c": ["PE6c(+PEmaxCas9)", "comb_vis+HEK-M-5-7D%", "Normalized+3rep_HEK-M-5-7D+pe_ratio_%"],
+    "PEmaxdRNaseH": ["Normalized+3rep_HEK-M-2-7D+pe_ratio_%", "PEmaxdRNaseH", "comb_vis+HEK-M-2-7D%"],
+    "PE6a": ["Normalized+3rep_HEK-M-3-7D+pe_ratio_%", "PE6a(+PEmaxCas9)", "comb_vis+HEK-M-3-7D%"],
+    "PE6b": ["Normalized+3rep_HEK-M-4-7D+pe_ratio_%", "PE6b(+PEmaxCas9)", "comb_vis+HEK-M-4-7D%"],
+    "PE6c": ["Normalized+3rep_HEK-M-5-7D+pe_ratio_%", "PE6c(+PEmaxCas9)", "comb_vis+HEK-M-5-7D%"],
 }
 
 def get_target_values(df, col_candidates):
@@ -116,16 +116,21 @@ def main():
     df_test = pd.read_parquet(test_path)
     print(f"Loaded strictly unseen test set: {len(df_test):,} rows", flush=True)
 
-    # Ensure 3-rep average columns exist
+    from src.utils.dataprep import IDX_TO_PE_TYPE, get_pe6_qc_mask
+
+    # Ensure clean 2-rep B1 average columns exist and apply canonical QC filter (matching PE6DeepPrimeDataset)
     for i in range(1, 10):
         c3 = f"Normalized+3rep_HEK-M-{i}-7D+pe_ratio_%"
-        if c3 not in df_test.columns:
-            r1 = f"Normalized+HEK-M-{i}-7D-KMC+pe_ratio_%"
-            r2 = f"Normalized+HEK-M-{i}-7D-UAR+pe_ratio_%"
-            r3 = f"Normalized+HEK-M2-{i}-7D-UAR+pe_ratio_%"
-            reps = [c for c in [r1, r2, r3] if c in df_test.columns]
-            if reps:
-                df_test[c3] = df_test[reps].mean(axis=1)
+        r2 = f"Normalized+HEK-M-{i}-7D-B1+pe_ratio_%"
+        r3 = f"Normalized+HEK-M2-{i}-7D-B1+pe_ratio_%"
+        reps = [c for c in [r2, r3] if c in df_test.columns]
+        if reps:
+            df_test[c3] = np.maximum(0.0, df_test[reps].mean(axis=1))
+            pe_type = IDX_TO_PE_TYPE[i]
+            qc_mask = get_pe6_qc_mask(df_test, pe_type=pe_type, read_count_filter=200, max_ctrl_bg=5.0)
+            df_test.loc[~qc_mask, c3] = np.nan
+            if pe_type in df_test.columns:
+                df_test.loc[~qc_mask, pe_type] = np.nan
 
     # Prepare features
     # 1. Base normalization for DeepPrime-base
@@ -137,16 +142,9 @@ def main():
     norm_mean_pe6 = pd.read_csv(os.path.join(pe6_ckpt_dir, "pe6_mean.csv"), index_col=0, header=None).squeeze()
     norm_std_pe6 = pd.read_csv(os.path.join(pe6_ckpt_dir, "pe6_std.csv"), index_col=0, header=None).squeeze()
 
-    bio_df = df_test.rename(columns=FEATURE_RENAME_MAP)
-    missing_bio = [c for c in FEATURE_NAMES if c not in bio_df.columns]
-    if missing_bio:
-        raise ValueError(f"Missing biofeatures in test set: {missing_bio}")
-
-    b_norm_base = (bio_df[FEATURE_NAMES] - norm_mean_base) / norm_std_base
-    b_tensor_base = torch.from_numpy(b_norm_base.fillna(0).values).float().to(device)
-
-    b_norm_pe6 = (bio_df[FEATURE_NAMES] - norm_mean_pe6) / norm_std_pe6
-    b_tensor_pe6 = torch.from_numpy(b_norm_pe6.fillna(0).values).float().to(device)
+    from src.utils.inference import prepare_biofeatures
+    b_tensor_base = prepare_biofeatures(df_test, norm_mean_base, norm_std_base, device)
+    b_tensor_pe6 = prepare_biofeatures(df_test, norm_mean_pe6, norm_std_pe6, device)
 
     wt_seqs = df_test["Target"].tolist() if "Target" in df_test.columns else df_test["WideTargetSequence"].tolist()
     ed_seqs = df_test["Masked_EditSeq"].tolist() if "Masked_EditSeq" in df_test.columns else wt_seqs
@@ -200,8 +198,8 @@ def main():
         delta_r = r_dp6 - r_base
         results.append({
             "PE System": model_name,
-            "DeepPrime-base (Pearson r)": round(r_base, 4),
-            "DeepPrime-base (Spearman rho)": round(rho_base, 4),
+            "DeepPrime-FT (Pearson r)": round(r_base, 4),
+            "DeepPrime-FT (Spearman rho)": round(rho_base, 4),
             "DeepPrime6 (Pearson r)": round(r_dp6, 4),
             "DeepPrime6 (Spearman rho)": round(rho_dp6, 4),
             "Delta Pearson r": round(delta_r, 4),
@@ -214,6 +212,11 @@ def main():
     out_csv = "figures/evaluation/Figure3_main_library_test_performance.csv"
     os.makedirs(os.path.dirname(out_csv), exist_ok=True)
     df_res.to_csv(out_csv, index=False)
+    for extra_csv in [
+        "notebooks/plots/Figure3_main_library_test_performance.csv",
+    ]:
+        os.makedirs(os.path.dirname(extra_csv), exist_ok=True)
+        df_res.to_csv(extra_csv, index=False)
     print(f"\nSaved metrics summary to: {out_csv}", flush=True)
 
     # -------------------------------------------------------------
@@ -253,6 +256,12 @@ def main():
     out_svg = "figures/evaluation/Figure3_main_library_test_performance.svg"
     plt.savefig(out_png, dpi=300, bbox_inches="tight")
     plt.savefig(out_svg, format="svg", bbox_inches="tight")
+    for extra_dir in [
+        "notebooks/plots",
+    ]:
+        os.makedirs(extra_dir, exist_ok=True)
+        plt.savefig(os.path.join(extra_dir, "Figure3_main_library_test_performance.png"), dpi=300, bbox_inches="tight")
+        plt.savefig(os.path.join(extra_dir, "Figure3_main_library_test_performance.svg"), format="svg", bbox_inches="tight")
     plt.close()
 
     print(f"Saved Figure 3 plots to:\n  - {out_png}\n  - {out_svg}", flush=True)

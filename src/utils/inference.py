@@ -10,7 +10,7 @@ Single Source of Truth (SSOT) across all workflows for:
    - DeepPrime-base (20-model ensemble with original architecture)
    - DeepPrime6 Fine-Tuned (4 models: pe6a, pe6b, pe6c, pemaxdrnaseh)
    - DeepPrime6 From-Scratch (4 models: pe6a, pe6b, pe6c, pemaxdrnaseh)
-   - PRIDICT2.0 Deep Ensemble (HEK293T & K562 multi-task scores)
+   - PRIDICT2.0
 5. Vectorized, high-throughput batched GPU inference routines.
 6. Comprehensive end-to-end DataFrame scoring pipeline.
 """
@@ -144,20 +144,31 @@ def prepare_biofeatures(
       1. prepare_biofeatures(df, norm_mean_series, norm_std_series, device)
       2. prepare_biofeatures(df, norm_type="pe6"|"base", device=device)
     """
-    # Extract exactly the 24 FEATURE_NAMES without risk of duplicate columns
+    # Extract exactly the 24 FEATURE_NAMES without risk of duplicate columns.
+    # Prefer raw feature aliases (e.g., RTT_len, Tm1_PBS, Tm4_cDNA_PAM-oppositeTarget)
+    # over short names when both exist in legacy parquets (where short names may be pre-normalized).
+    df_work = df
+    if "type_sub" in df.columns and (df["type_sub"] < -0.1).any():
+        df_work = df.copy()
+        base_mean = pd.read_csv(os.path.join(DEFAULT_DP_BASE_DIR, "mean.csv"), index_col=0, header=None).squeeze()
+        base_std = pd.read_csv(os.path.join(DEFAULT_DP_BASE_DIR, "std.csv"), index_col=0, header=None).squeeze()
+        for col_in_place in ["Edit_pos", "Edit_len", "RHA_len", "type_sub", "type_ins", "type_del", "DeepSpCas9_score"]:
+            if col_in_place in df_work.columns:
+                df_work[col_in_place] = df_work[col_in_place] * base_std[col_in_place] + base_mean[col_in_place]
+
     extracted_features = {}
     for f in FEATURE_NAMES:
-        if f in df.columns:
-            extracted_features[f] = df[f].values
-        else:
-            aliases = [k for k, target in FEATURE_RENAME_MAP.items() if target == f]
-            found = False
-            for a in aliases:
-                if a in df.columns:
-                    extracted_features[f] = df[a].values
-                    found = True
-                    break
-            if not found:
+        aliases = [k for k, target in FEATURE_RENAME_MAP.items() if target == f]
+        found_alias = False
+        for a in aliases:
+            if a in df_work.columns:
+                extracted_features[f] = df_work[a].values
+                found_alias = True
+                break
+        if not found_alias:
+            if f in df_work.columns:
+                extracted_features[f] = df_work[f].values
+            else:
                 raise ValueError(f"Missing required biological feature: {f} (aliases: {aliases})")
 
     if isinstance(norm_mean_or_type, str):
@@ -178,8 +189,62 @@ def prepare_biofeatures(
         norm_mean = norm_mean_or_type
         norm_std_s = norm_std
 
+    if hasattr(norm_mean, "rename"):
+        norm_mean = norm_mean.rename(index=FEATURE_RENAME_MAP)
+    if hasattr(norm_std_s, "rename"):
+        norm_std_s = norm_std_s.rename(index=FEATURE_RENAME_MAP)
+
     if device is None:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    # Harmonize Tm3 (Tm4_cDNA_PAM-oppositeTarget) and TmD (deltaTm_Tm4-Tm2) domain conventions:
+    # DeepPrime6 checkpoints were trained on Wallace-rule Tm4_cDNA_PAM-oppositeTarget
+
+    if float(norm_mean["Tm3"]) > 0.0:
+        tm3_arr = np.asarray(extracted_features["Tm3"], dtype=np.float32).copy()
+        tmd_arr = np.asarray(extracted_features["TmD"], dtype=np.float32).copy()
+        char_mask = tm3_arr < -50.0
+        if np.any(char_mask):
+            rt_len_arr = np.asarray(extracted_features["RTlen"], dtype=np.float32)
+            gc_rtt_arr = np.asarray(extracted_features["nGCcnt2"], dtype=np.float32)
+            tm2_arr = np.asarray(extracted_features["Tm2"], dtype=np.float32)
+            wallace_tm3 = 2.0 * rt_len_arr + 2.0 * gc_rtt_arr
+            tm3_arr[char_mask] = wallace_tm3[char_mask]
+            tmd_arr[char_mask] = wallace_tm3[char_mask] - tm2_arr[char_mask]
+            extracted_features["Tm3"] = tm3_arr
+            extracted_features["TmD"] = tmd_arr
+    elif float(norm_mean["Tm3"]) < -50.0:
+        # DeepPrime-base / DeepPrime-FT expecting legacy char-by-char bug (~ -351.4)
+        tm3_arr = np.asarray(extracted_features["Tm3"], dtype=np.float32).copy()
+        tmd_arr = np.asarray(extracted_features["TmD"], dtype=np.float32).copy()
+        pos_mask = tm3_arr > 0.0
+        if np.any(pos_mask):
+            legacy_vals = np.full(len(df_work), np.nan, dtype=np.float32)
+            if "Tm4_cDNA_PAM_oppositeTarget_seq" in df_work.columns:
+                from Bio.Seq import Seq
+                from Bio.SeqUtils import MeltingTemp as mt
+                seq_col = df_work["Tm4_cDNA_PAM_oppositeTarget_seq"].values
+                for idx in np.where(pos_mask)[0]:
+                    pair = seq_col[idx]
+                    if isinstance(pair, (list, tuple, np.ndarray)) and len(pair) == 2:
+                        s1, s2 = str(pair[0]), str(pair[1])
+                        last_tm = 0.0
+                        for c1, c2 in zip(s1, s2):
+                            try:
+                                last_tm = mt.Tm_NN(seq=Seq(c1), c_seq=Seq(c2), nn_table=mt.DNA_NN3)
+                            except Exception:
+                                pass
+                        legacy_vals[idx] = last_tm
+            valid_legacy = ~np.isnan(legacy_vals)
+            tm3_arr[pos_mask & valid_legacy] = legacy_vals[pos_mask & valid_legacy]
+            tm3_arr[pos_mask & ~valid_legacy] = float(norm_mean["Tm3"])
+
+            tm2_arr = np.asarray(extracted_features["Tm2"], dtype=np.float32)
+            tmd_arr[pos_mask & valid_legacy] = tm3_arr[pos_mask & valid_legacy] - tm2_arr[pos_mask & valid_legacy]
+            tmd_arr[pos_mask & ~valid_legacy] = float(norm_mean["TmD"])
+
+            extracted_features["Tm3"] = tm3_arr
+            extracted_features["TmD"] = tmd_arr
 
     # Standardize features using numpy broadcasting aligned to FEATURE_NAMES
     mean_vals = norm_mean[FEATURE_NAMES].astype(np.float32).values
@@ -322,6 +387,21 @@ def predict_pridict2_scores(
             r_dict = row.to_dict()
             if "REF_ID" not in r_dict:
                 r_dict["REF_ID"] = str(r_dict.get("ID", pos_idx))
+            if "WildTypeSequence" not in r_dict or "PrimeEditedSequence" not in r_dict:
+                wt74 = str(r_dict.get("Target") or r_dict.get("WideTargetSequence", "")).upper()
+                if len(wt74) >= 74 and "RTT" in r_dict:
+                    from Bio.Seq import Seq
+                    rtt_rc = str(Seq(str(r_dict["RTT"])).reverse_complement()).upper()
+                    etype = str(r_dict.get("Edit_type", "Sub")).capitalize()[:3]
+                    elen = int(r_dict.get("Edit_len") or r_dict.get("Edit length", 1))
+                    r_dict["WildTypeSequence"] = wt74
+                    r_dict["Edit_type"] = etype
+                    if etype == "Sub":
+                        r_dict["PrimeEditedSequence"] = wt74[:21] + rtt_rc + wt74[21 + len(rtt_rc):]
+                    elif etype == "Ins":
+                        r_dict["PrimeEditedSequence"] = wt74[:21] + rtt_rc + wt74[21 + len(rtt_rc) - elen:]
+                    elif etype == "Del":
+                        r_dict["PrimeEditedSequence"] = wt74[:21] + rtt_rc + wt74[21 + len(rtt_rc) + elen:]
             feat = extract_single_pegRNA_features(r_dict)
             if feat is not None:
                 features_list.append(feat)
@@ -395,6 +475,11 @@ def run_comprehensive_inference(
     if device is None:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.info(f"Starting comprehensive inference on {len(df):,} sequences [Device: {device}]")
+
+    if "Masked_EditSeq" not in df.columns or ("PBSlen" not in df.columns and "PBS_len" not in df.columns):
+        logger.info("Raw input dataset detected (missing preprocessed biofeatures); running preprocess_data()...")
+        from src.data.components.pe6_preprocess_data import preprocess_data
+        df = preprocess_data(data=df.copy())
 
     # Resolve sequences
     wt_col = "Target" if "Target" in df.columns else ("WideTargetSequence" if "WideTargetSequence" in df.columns else None)

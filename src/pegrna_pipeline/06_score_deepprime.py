@@ -9,12 +9,16 @@ import glob
 import subprocess
 
 # Ensure we can import from src
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 from Bio.Seq import Seq, reverse_complement
 from src.data.components.pe6_preprocess_data import preprocess_data
 
 # Ensure PRIDICT2 path for PE6DeepPrimeModule
 pridict2_dir = os.path.abspath("PRIDICT2")
-sys.path.append(pridict2_dir)
+if pridict2_dir not in sys.path:
+    sys.path.append(pridict2_dir)
 from src.models.pe6_module_dp_only import PE6DeepPrimeModule
 
 def parse_args():
@@ -37,7 +41,15 @@ def map_to_legacy_features(df):
     ldf['leading G'] = ""
     ldf['PBS'] = ldf['PBS_sequence']
     ldf['RTT'] = ldf['RTT_sequence']
-    ldf['Edit length'] = ldf['ALT'].str.len()
+
+    def get_legacy_edit_len(row):
+        ref = "" if pd.isna(row['REF']) else str(row['REF'])
+        alt = "" if pd.isna(row['ALT']) else str(row['ALT'])
+        if len(ref) == len(alt):
+            return len(alt)
+        return abs(len(ref) - len(alt))
+
+    ldf['Edit length'] = ldf.apply(get_legacy_edit_len, axis=1)
     
     # We need Edit position relative to RTT.
     # Edit position is 1-indexed distance from the nick.
@@ -103,41 +115,8 @@ def main():
     print("Extracting bio-features for DeepPrime...")
     feat_df = preprocess_data(data=legacy_df)
     
-    # Prepare standard features
-    standard_features = [
-        "PBS_len", "RTT_len", "RT-PBS_len", "Edit_pos", "Edit_len", "RHA_len",
-        "type_sub", "type_ins", "type_del", "Tm1_PBS", "Tm2_RTT_cTarget_sameLength", "Tm3_RTT_cTarget_replaced", 
-        "Tm4_cDNA_PAM-oppositeTarget", "Tm5_RTT_cDNA", "deltaTm_Tm4-Tm2",
-        "GC_count_PBS", "GC_count_RTT", "GC_count_RT-PBS", "GC_contents_PBS", "GC_contents_RTT", "GC_contents_RT-PBS",
-        "MFE_RT-PBS-polyT", "MFE_Spacer", "DeepSpCas9_score"
-    ]
-    
-    biofeatures_raw = feat_df[standard_features].copy()
-    
-    # Normalize features using the provided DP_variant mean and std
-    norm_mean = pd.read_csv(os.path.join(dp_ckpt_dir, "mean.csv"), index_col=0, header=None).squeeze()
-    norm_std = pd.read_csv(os.path.join(dp_ckpt_dir, "std.csv"), index_col=0, header=None).squeeze()
-    
-    # Match columns carefully. The mean.csv uses old DP names.
-    feature_rename_map = {
-        "PBS_len": "PBSlen", "RTT_len": "RTlen", "RT-PBS_len": "RT-PBSlen",
-        "Tm1_PBS": "Tm1", "Tm2_RTT_cTarget_sameLength": "Tm2", "Tm3_RTT_cTarget_replaced": "Tm2new",
-        "Tm4_cDNA_PAM-oppositeTarget": "Tm3", "Tm5_RTT_cDNA": "Tm4", "deltaTm_Tm4-Tm2": "TmD",
-        "GC_count_PBS": "nGCcnt1", "GC_count_RTT": "nGCcnt2", "GC_count_RT-PBS": "nGCcnt3",
-        "GC_contents_PBS": "fGCcont1", "GC_contents_RTT": "fGCcont2", "GC_contents_RT-PBS": "fGCcont3",
-        "MFE_RT-PBS-polyT": "MFE3", "MFE_Spacer": "MFE4",
-    }
-    biofeatures_renamed = biofeatures_raw.rename(columns=feature_rename_map)
-    dp_feature_names = norm_mean.index.tolist()
-    biofeatures_ordered = biofeatures_renamed[dp_feature_names]
-    
-    norm_biofeatures = (biofeatures_ordered - norm_mean) / norm_std
-    norm_biofeatures = norm_biofeatures.fillna(0)
-    
-    for col in norm_biofeatures.columns:
-        feat_df[col] = norm_biofeatures[col]
-        
-    # Add dummy target labels since PE6DeepPrimeDataset checks for them
+    # Keep raw biofeatures in feat_df so that src/predict.py normalizes once using mean.csv/std.csv,
+    # and Phase 7 (07_score_deepprime6.py) normalizes once using pe6_mean.csv/pe6_std.csv.
     pe_types = [
         "PEmax", "PEmaxdRNaseH", "PE6a(+PEmaxCas9)", "PE6b(+PEmaxCas9)",
         "PE6c(+PEmaxCas9)", "PE6d(+PEmaxCas9)", "PE6e(+dRNaseH)", "PE6f(+dRNaseH)", "PE6g(+dRNaseH)"
@@ -145,8 +124,8 @@ def main():
     for pe_type in pe_types:
         feat_df[pe_type] = 0.0
         
-    # We must ensure there's an orig_index or ID column for predict.py to output
-    feat_df['ID'] = df['run_id'].values
+    # Ensure a unique ID column for predict.py output
+    feat_df['ID'] = df['design_id'].values if 'design_id' in df.columns else df['run_id'].values
         
     temp_input = os.path.join(args.output_dir, "temp_deepprime_input.parquet")
     temp_output = os.path.join(args.output_dir, "temp_deepprime_scores.csv")
@@ -154,7 +133,7 @@ def main():
     
     print("Running DeepPrime predictions via src/predict.py...")
     cmd = [
-        "python", "src/predict.py",
+        sys.executable, "src/predict.py",
         "trainer=gpu",
         f"data.csv_path={temp_input}",
         "ckpt_path=null",

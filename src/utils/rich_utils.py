@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Sequence
 
 import rich
+import rich.console
 import rich.syntax
 import rich.tree
 from hydra.core.hydra_config import HydraConfig
@@ -10,6 +11,16 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from rich.prompt import Prompt
 
 from src.utils import pylogger
+
+_orig_clear_live = rich.console.Console.clear_live
+
+
+def _safe_clear_live(self) -> None:
+    if getattr(self, "_live_stack", None):
+        _orig_clear_live(self)
+
+
+rich.console.Console.clear_live = _safe_clear_live
 
 log = pylogger.RankedLogger(__name__, rank_zero_only=True)
 OmegaConf.register_new_resolver("divide", lambda x, y: float(x) / float(y))
@@ -75,6 +86,7 @@ def print_config_tree(
 
     # save config tree to file
     if save_to_file:
+        Path(cfg.paths.output_dir).mkdir(parents=True, exist_ok=True)
         with open(Path(cfg.paths.output_dir, "config_tree.log"), "w") as file:
             rich.print(tree, file=file)
 
@@ -100,5 +112,6 @@ def enforce_tags(cfg: DictConfig, save_to_file: bool = False) -> None:
         log.info(f"Tags: {cfg.tags}")
 
     if save_to_file:
+        Path(cfg.paths.output_dir).mkdir(parents=True, exist_ok=True)
         with open(Path(cfg.paths.output_dir, "tags.log"), "w") as file:
             rich.print(cfg.tags, file=file)

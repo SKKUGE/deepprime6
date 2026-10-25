@@ -4,7 +4,7 @@ Compute all model predictions on the deduplicated test set (data/rq3_test_librar
 using the canonical codebase inference engine (src.utils.inference).
 
 Models:
-1. DeepPrime-base (Vanilla 20-model ensemble)
+1. DeepPrime-FT (Vanilla 20-model ensemble)
 2. DeepPrime6-pe6a (pe6a_mainft.ckpt)
 3. DeepPrime6-pe6b (pe6b_mainft.ckpt)
 4. DeepPrime6-pe6c (pe6c_mainft.ckpt)
@@ -41,15 +41,25 @@ def main():
     df = pd.read_parquet(test_path)
     print(f"Loaded {len(df):,} test sequences.", flush=True)
 
+    has_cached_pridict = False
+    if os.path.exists("data/rq3_predictions_pridict2.csv"):
+        pr_cached = pd.read_csv("data/rq3_predictions_pridict2.csv")
+        if len(pr_cached) == len(df) and pr_cached["PRIDICT2_0_editing_Score_deep_HEK"].notna().sum() == len(df):
+            has_cached_pridict = True
+            print("Found complete cached PRIDICT2.0 predictions (2,325/2,325 valid) in data/rq3_predictions_pridict2.csv.", flush=True)
+
     # Execute inference via canonical codebase engine
     scored_df = run_comprehensive_inference(
         df_or_path=df,
         include_base=True,
         include_dp6_ft=True,
         include_dp6_scratch=False,
-        include_pridict2=True,
+        include_pridict2=not has_cached_pridict,
         batch_size=2048
     )
+    if has_cached_pridict:
+        scored_df["pred_pridict2_hek"] = pr_cached["PRIDICT2_0_editing_Score_deep_HEK"].values
+        scored_df["pred_pridict2_k562"] = pr_cached["PRIDICT2_0_editing_Score_deep_K562"].values
 
     # Save individual prediction CSVs matching Track A format
     id_col = scored_df["ID"].values if "ID" in scored_df.columns else scored_df.index.values
@@ -84,13 +94,6 @@ def main():
     scored_df.to_parquet("data/rq3_test_library_with_pridict2.parquet", index=False)
     print("Saved: data/rq3_test_library_with_pridict2.parquet", flush=True)
 
-    # Copy to experiment predictions directory
-    exp_pred_dir = "experiments/20261008_panelB_base_architecture_revalidation/predictions"
-    os.makedirs(exp_pred_dir, exist_ok=True)
-    for filepath in list(pred_exports.values()) + ["data/rq3_predictions_pridict2.csv"]:
-        if os.path.exists(filepath):
-            shutil.copy(filepath, os.path.join(exp_pred_dir, os.path.basename(filepath)))
-    print(f"Synced all Track A prediction files to {exp_pred_dir}", flush=True)
     print("\n--- Track A Predictions Generation Complete ---", flush=True)
 
 if __name__ == "__main__":

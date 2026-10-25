@@ -36,7 +36,7 @@ hydra:
         # storage: sqlite:///optuna_sweep.db
 
         # name of the study to persist optimization results
-        study_name: pe6-skw-ft
+        study_name: pe6-optuna-ft
 
         # Number of parallel Optuna trials.
         # Recommendation: keep n_jobs=1 for single-GPU setups, even with ≥24 GB

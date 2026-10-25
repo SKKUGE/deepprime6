@@ -165,9 +165,28 @@ class TestPE6DeepPrimeDataset:
         norm_mean = ds1.norm_mean
         norm_std = ds1.norm_std
 
-        # Create a second dataset using the stats from the first
-        ds2 = PE6DeepPrimeDataset(df, datafilter, norm_mean=norm_mean, norm_std=norm_std)
-        assert len(ds2) == len(ds1)
+        assert norm_mean is not None and norm_std is not None
+        assert "PBSlen" in norm_mean.index
+        assert "RTlen" in norm_mean.index
+
+        # Create a second dataset on a subset using the stats from the first
+        ds2 = PE6DeepPrimeDataset(df.iloc[:10].copy(), datafilter, norm_mean=norm_mean, norm_std=norm_std)
+        assert len(ds2) == 10
+        ((_, b1), _), _ = ds1[0]
+        ((_, b2), _), _ = ds2[0]
+        assert torch.allclose(b1, b2, atol=1e-6)
+
+    def test_unlabeled_dataset_handling(self):
+        """Unlabeled DataFrames (without target PE column or ID) should initialize cleanly for inference."""
+        df = _make_dataframe(n=5)
+        pe_type = "PEmaxdRNaseH"
+        df_unlabeled = df.drop(columns=[pe_type, "ID"])
+        ds = PE6DeepPrimeDataset(df_unlabeled, {"PE_types": [pe_type]})
+        assert len(ds) == 5
+        ((_, b), label), annot = ds[0]
+        assert b.shape == (len(BIOFEATURE_COLS),)
+        assert label[0].item() == 0.0
+        assert isinstance(annot, str)
 
     def test_read_count_filter_keeps_all_rows(self):
         """With filter=0 all rows should be retained (no filtering)."""

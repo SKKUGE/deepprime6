@@ -16,7 +16,10 @@ from src.utils import (  # noqa: E402
     task_wrapper,
 )
 
-from src.utils.deepprime_base import use_original_architecture_for_baseline  # noqa: E402
+from src.utils.deepprime_base import (  # noqa: E402
+    resolve_default_normalization_paths,
+    use_original_architecture_for_baseline,
+)
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -44,6 +47,8 @@ def predict(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         # No Lightning checkpoint => raw DeepPrime (GENET) weights are used as-is. They must run on the
         # original DeepPrime architecture, not the fine-tuning architecture used for DeepPrime6.
         use_original_architecture_for_baseline(cfg, log)
+
+    resolve_default_normalization_paths(cfg, ckpt_path, log)
 
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)

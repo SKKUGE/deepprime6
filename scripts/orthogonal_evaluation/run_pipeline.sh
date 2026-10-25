@@ -25,12 +25,7 @@ fi
 
 cd "${PROJECT_ROOT}"
 
-PYTHON_EXEC="${PYTHON_EXEC:-python3}"
-if [ -f "$PROJECT_ROOT/../DeepPrime6/.conda/bin/python" ]; then
-    PYTHON_EXEC="$PROJECT_ROOT/../DeepPrime6/.conda/bin/python"
-elif [ -f "$HOME/.conda/bin/python" ]; then
-    PYTHON_EXEC="$HOME/.conda/bin/python"
-fi
+PYTHON_EXEC="${PYTHON_EXEC:-python}"
 
 echo "========================================================================"
 echo " Starting Orthogonal Benchmark Cross-Evaluation Pipeline"
@@ -59,7 +54,6 @@ echo "========================================================================"
 echo " Pipeline Finished Successfully!"
 echo " Outputs saved to:"
 echo "   1) data/orthogonal_testset/"
-echo "   2) experiments/20261009_orthogonal_benchmark_leakage_stratification/"
-echo "   3) notebooks/plots/orthogonal_benchmark/"
+echo "   2) notebooks/plots/orthogonal_benchmark/"
 echo " Timestamp: $(date)"
 echo "========================================================================"

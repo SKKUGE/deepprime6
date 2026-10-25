@@ -15,7 +15,6 @@ Purpose:
 3. Merges pegRNA design metadata required for cross-model inference.
 4. Saves strictly unseen evaluation datasets and overlap summaries to:
    - `data/orthogonal_testset/`
-   - `experiments/20261009_orthogonal_benchmark_leakage_stratification/results/`
 """
 
 import os
@@ -46,9 +45,7 @@ if pridict_path not in sys.path:
 from pridict.pridictv2.dataset import get_stratified_partitions
 
 OUTPUT_DIR = "data/orthogonal_testset"
-EXP_DIR = "experiments/20261009_orthogonal_benchmark_leakage_stratification/results"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(EXP_DIR, exist_ok=True)
 
 
 def make_design_sig(wts, etype, elen, epos, pbslen, rtlen):
@@ -212,7 +209,6 @@ def main():
 
     dp_filtered_out_path = os.path.join(OUTPUT_DIR, "deepprime_test_filtered.csv")
     dp_test_filtered.to_csv(dp_filtered_out_path, index=False)
-    dp_test_filtered.to_csv(os.path.join(EXP_DIR, "deepprime_test_filtered.csv"), index=False)
     print(f"  Saved filtered DeepPrime test set to: {dp_filtered_out_path}", flush=True)
 
     # ---------------------------------------------------------
@@ -253,7 +249,6 @@ def main():
 
     p_filtered_out_path = os.path.join(OUTPUT_DIR, "pridict2_test_filtered.csv")
     p_test_filtered.to_csv(p_filtered_out_path, index=False)
-    p_test_filtered.to_csv(os.path.join(EXP_DIR, "pridict2_test_filtered.csv"), index=False)
     print(f"  Saved filtered PRIDICT2 test set to: {p_filtered_out_path}", flush=True)
 
     # ---------------------------------------------------------
@@ -266,7 +261,7 @@ def main():
             "pe6 Target Locus Overlap (Forward + RC)": int((dp_test["in_pe6_target"] | dp_test["in_pe6_non74"]).sum()),
             "pe6 Exact pegRNA Overlap": int(dp_test["in_pe6_exact_pegrna"].sum()),
             "PRIDICT2.0 Train Target Overlap": int(dp_test["in_pridict2_train_target"].sum()),
-            "DeepPrime-base Train Target Overlap": int(dp_test["in_dp_train_target"].sum()),
+            "DeepPrime-FT Train Target Overlap": int(dp_test["in_dp_train_target"].sum()),
             "Total Excluded (Target Stratification)": int(dp_leakage_mask.sum()),
             "Final Strictly Unseen Test Set (N)": len(dp_test_filtered)
         },
@@ -276,7 +271,7 @@ def main():
             "pe6 Target Locus Overlap (Forward + RC)": int(sum(p_in_pe6)),
             "pe6 Exact pegRNA Overlap": 0,
             "PRIDICT2.0 Train Target Overlap": 0,
-            "DeepPrime-base Train Target Overlap": int(sum(p_in_dp_train)),
+            "DeepPrime-FT Train Target Overlap": int(sum(p_in_dp_train)),
             "Total Excluded (Target Stratification)": int(p_test["in_bad_grp_id"].sum()),
             "Final Strictly Unseen Test Set (N)": len(p_test_filtered)
         }
@@ -284,7 +279,6 @@ def main():
 
     summary_out_path = os.path.join(OUTPUT_DIR, "overlap_exclusion_summary.csv")
     overlap_summary.to_csv(summary_out_path, index=False)
-    overlap_summary.to_csv(os.path.join(EXP_DIR, "overlap_exclusion_summary.csv"), index=False)
     print(f"\nSaved overlap exclusion summary to: {summary_out_path}", flush=True)
     print("\n" + overlap_summary.to_string(index=False))
 

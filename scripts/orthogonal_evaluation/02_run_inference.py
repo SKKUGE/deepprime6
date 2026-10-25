@@ -16,7 +16,6 @@ Purpose:
 3. Computes Spearman rho, Pearson r, and sample size N against ground-truth measured PE efficiency.
 4. Saves predictions and performance comparison tables to:
    - `data/orthogonal_testset/`
-   - `experiments/20261009_orthogonal_benchmark_leakage_stratification/results/`
    - `notebooks/plots/orthogonal_benchmark/`
 """
 
@@ -53,11 +52,9 @@ from src.utils.predict_pridict2 import (
 from src.data.components.pe6_preprocess_data import preprocess_data
 
 OUTPUT_DIR = "data/orthogonal_testset"
-EXP_DIR = "experiments/20261009_orthogonal_benchmark_leakage_stratification/results"
 PLOTS_DIR = "notebooks/plots/orthogonal_benchmark"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(EXP_DIR, exist_ok=True)
 os.makedirs(PLOTS_DIR, exist_ok=True)
 
 FEATURE_NAMES = [
@@ -163,70 +160,80 @@ def main():
     for k, v in dp_preds.items():
         dp_test[k] = v
 
-    # PRIDICT2.0 prediction on DeepPrime test set
-    print("  Extracting PRIDICT2 features for filtered DeepPrime rows...", flush=True)
-    pr_features_list = []
-    failed_pr_indices = set()
-    for row_idx, (i, r) in enumerate(dp_test.iterrows()):
-        w = r["WTS_clean"]
-        u = r["Unedited (gRNA binding -2 ~ RTT binding +2)"]
-        p = r["Prime-edited (gRNA binding -2 ~ RTT binding +2)"]
-        u_idx = w.find(u) if pd.notna(u) else -1
-        if u_idx != -1:
-            edited = w[:u_idx] + p + w[u_idx + len(u):]
-        else:
-            edited = w
-        ext = r["3' extension sequence of pegRNA"] if pd.notna(r["3' extension sequence of pegRNA"]) else ""
-        rt_len = int(r["RTlen"])
-        pbs_seq = ext[rt_len:] if len(ext) >= rt_len else ""
-        rtt_seq = ext[:rt_len] if len(ext) >= rt_len else ""
-        guide_seq = "G" + str(r["Guide sequence ((G/g)N19)"])
-        
-        pr_row = {
-            "REF_ID": r["ID"],
-            "WildTypeSequence": w,
-            "PrimeEditedSequence": edited,
-            "Edit_type": r["Edit_type_clean"].capitalize(),
-            "Guide": guide_seq,
-            "PBS": pbs_seq,
-            "RTT": rtt_seq
-        }
-        try:
-            feat = extract_single_pegRNA_features(pr_row)
-            if feat is not None:
-                pr_features_list.append(feat)
+    # PRIDICT2.0 prediction on DeepPrime test set (reuse cached if available)
+    cached_dp_pred_path = os.path.join(OUTPUT_DIR, "deepprime_test_predictions.csv")
+    reused_dp_pr = False
+    if os.path.exists(cached_dp_pred_path):
+        cached_dp = pd.read_csv(cached_dp_pred_path)
+        if len(cached_dp) == len(dp_test) and "pred_pridict2_hek" in cached_dp.columns and (cached_dp["ID"].values == dp_test["ID"].values).all():
+            dp_test["pred_pridict2_hek"] = cached_dp["pred_pridict2_hek"].values
+            reused_dp_pr = True
+            print(f"  Loaded cached PRIDICT2.0 scores ({dp_test['pred_pridict2_hek'].notna().sum():,}/{len(dp_test):,} valid) from {cached_dp_pred_path}.", flush=True)
+
+    if not reused_dp_pr:
+        print("  Extracting PRIDICT2 features for filtered DeepPrime rows...", flush=True)
+        pr_features_list = []
+        failed_pr_indices = set()
+        for row_idx, (i, r) in enumerate(dp_test.iterrows()):
+            w = r["WTS_clean"]
+            u = r["Unedited (gRNA binding -2 ~ RTT binding +2)"]
+            p = r["Prime-edited (gRNA binding -2 ~ RTT binding +2)"]
+            u_idx = w.find(u) if pd.notna(u) else -1
+            if u_idx != -1:
+                edited = w[:u_idx] + p + w[u_idx + len(u):]
             else:
+                edited = w
+            ext = r["3' extension sequence of pegRNA"] if pd.notna(r["3' extension sequence of pegRNA"]) else ""
+            rt_len = int(r["RTlen"])
+            pbs_seq = ext[rt_len:] if len(ext) >= rt_len else ""
+            rtt_seq = ext[:rt_len] if len(ext) >= rt_len else ""
+            guide_seq = "G" + str(r["Guide sequence ((G/g)N19)"])
+            
+            pr_row = {
+                "REF_ID": r["ID"],
+                "WildTypeSequence": w,
+                "PrimeEditedSequence": edited,
+                "Edit_type": r["Edit_type_clean"].capitalize(),
+                "Guide": guide_seq,
+                "PBS": pbs_seq,
+                "RTT": rtt_seq
+            }
+            try:
+                feat = extract_single_pegRNA_features(pr_row)
+                if feat is not None:
+                    pr_features_list.append(feat)
+                else:
+                    failed_pr_indices.add(row_idx)
+                    pr_features_list.append({"sequence_name": r["ID"]})
+            except Exception:
                 failed_pr_indices.add(row_idx)
                 pr_features_list.append({"sequence_name": r["ID"]})
-        except Exception:
-            failed_pr_indices.add(row_idx)
-            pr_features_list.append({"sequence_name": r["ID"]})
 
-    pr_peg_df = pd.DataFrame(pr_features_list)
-    deepdfcols = [
-        "wide_initial_target", "wide_mutated_target", "deepeditposition", 
-        "deepeditposition_lst", "Correction_Type", "Correction_Length", 
-        "protospacerlocation_only_initial", "PBSlocation",
-        "RT_initial_location", "RT_mutated_location",
-        "RToverhangmatches", "RToverhanglength", 
-        "RTlength", "PBSlength", "RTmt", "RToverhangmt", "PBSmt", "protospacermt",
-        "extensionmt", "original_base_mt", "edited_base_mt", "original_base_mt_nan",
-        "edited_base_mt_nan"
-    ]
-    for c in deepdfcols:
-        if c not in pr_peg_df.columns:
-            pr_peg_df[c] = 0
+        pr_peg_df = pd.DataFrame(pr_features_list)
+        deepdfcols = [
+            "wide_initial_target", "wide_mutated_target", "deepeditposition", 
+            "deepeditposition_lst", "Correction_Type", "Correction_Length", 
+            "protospacerlocation_only_initial", "PBSlocation",
+            "RT_initial_location", "RT_mutated_location",
+            "RToverhangmatches", "RToverhanglength", 
+            "RTlength", "PBSlength", "RTmt", "RToverhangmt", "PBSmt", "protospacermt",
+            "extensionmt", "original_base_mt", "edited_base_mt", "original_base_mt_nan",
+            "edited_base_mt_nan"
+        ]
+        for c in deepdfcols:
+            if c not in pr_peg_df.columns:
+                pr_peg_df[c] = 0
 
-    print("  Running PRIDICT2.0 forward pass on filtered DeepPrime rows...", flush=True)
-    pr_preds_res = deeppridict(pr_peg_df, pr_models)
-    tmp = [pr_preds_res[m] for m in pr_preds_res]
-    tmp_df = pd.concat(tmp, axis=0, ignore_index=True)
-    agg_df = compute_average_predictions(tmp_df, grp_cols=["seq_id", "dataset_name"])
-    hek_df = agg_df[agg_df["dataset_name"] == "HEK"].sort_values("seq_id").reset_index(drop=True)
-    dp_test["pred_pridict2_hek"] = hek_df["pred_averageedited"].values * 100
-    if failed_pr_indices:
-        dp_test.loc[list(failed_pr_indices), "pred_pridict2_hek"] = np.nan
-        print(f"  Assigned NaN to {len(failed_pr_indices)} PRIDICT2 feature-extraction failure rows.", flush=True)
+        print("  Running PRIDICT2.0 forward pass on filtered DeepPrime rows...", flush=True)
+        pr_preds_res = deeppridict(pr_peg_df, pr_models)
+        tmp = [pr_preds_res[m] for m in pr_preds_res]
+        tmp_df = pd.concat(tmp, axis=0, ignore_index=True)
+        agg_df = compute_average_predictions(tmp_df, grp_cols=["seq_id", "dataset_name"])
+        hek_df = agg_df[agg_df["dataset_name"] == "HEK"].sort_values("seq_id").reset_index(drop=True)
+        dp_test["pred_pridict2_hek"] = hek_df["pred_averageedited"].values * 100
+        if failed_pr_indices:
+            dp_test.loc[list(failed_pr_indices), "pred_pridict2_hek"] = np.nan
+            print(f"  Assigned NaN to {len(failed_pr_indices)} PRIDICT2 feature-extraction failure rows.", flush=True)
 
     # Save DeepPrime predictions
     dp_out_cols = [
@@ -234,10 +241,10 @@ def main():
         "Measured_PE_efficiency", "pred_dp_base", "pred_pridict2_hek", "pred_dp6_pe6a", "pred_dp6_pe6b", "pred_dp6_pe6c", "pred_dp6_drnaseh"
     ]
     dp_test_out = dp_test[dp_out_cols].copy()
-    for d in [OUTPUT_DIR, EXP_DIR, PLOTS_DIR]:
+    for d in [OUTPUT_DIR, PLOTS_DIR]:
         dp_test_out.to_csv(os.path.join(d, "deepprime_test_predictions.csv"), index=False)
         dp_test_out.to_csv(os.path.join(d, "deepprime_test_raw_predictions.csv"), index=False)
-    print(f"  Saved filtered predictions to {OUTPUT_DIR}, {EXP_DIR}, and {PLOTS_DIR}", flush=True)
+    print(f"  Saved filtered predictions to {OUTPUT_DIR} and {PLOTS_DIR}", flush=True)
 
     # ---------------------------------------------------------
     # 3. Evaluate on Filtered PRIDICT2.0 Test Set
@@ -252,15 +259,25 @@ def main():
     p_test = pd.read_csv(p_filtered_path)
     print(f"  Loaded filtered PRIDICT2 test set: {len(p_test):,} rows (100% strictly unseen)", flush=True)
 
-    # PRIDICT2.0 prediction
-    print("  Running PRIDICT2.0 forward pass...", flush=True)
-    p_test_input = p_test.copy()
-    p_test_input["seq_id"] = list(range(len(p_test_input)))
-    res_pr = deeppridict(p_test_input, pr_models)
-    tmp_p = [res_pr[m] for m in res_pr]
-    tmp_df_p = pd.concat(tmp_p, axis=0, ignore_index=True)
-    agg_df_p = compute_average_predictions(tmp_df_p, grp_cols=["seq_id", "dataset_name"])
-    p_test["pred_pridict2_hek"] = agg_df_p.loc[agg_df_p["dataset_name"] == "HEK", "pred_averageedited"].values * 100
+    # PRIDICT2.0 prediction (reuse cached if available)
+    cached_pr_pred_path = os.path.join(OUTPUT_DIR, "pridict2_test_predictions.csv")
+    reused_pr_pr = False
+    if os.path.exists(cached_pr_pred_path):
+        cached_pr = pd.read_csv(cached_pr_pred_path)
+        if len(cached_pr) == len(p_test) and "pred_pridict2_hek" in cached_pr.columns and (cached_pr["ID"].values == p_test["ID"].values).all():
+            p_test["pred_pridict2_hek"] = cached_pr["pred_pridict2_hek"].values
+            reused_pr_pr = True
+            print(f"  Loaded cached PRIDICT2.0 scores ({p_test['pred_pridict2_hek'].notna().sum():,}/{len(p_test):,} valid) from {cached_pr_pred_path}.", flush=True)
+
+    if not reused_pr_pr:
+        print("  Running PRIDICT2.0 forward pass...", flush=True)
+        p_test_input = p_test.copy()
+        p_test_input["seq_id"] = list(range(len(p_test_input)))
+        res_pr = deeppridict(p_test_input, pr_models)
+        tmp_p = [res_pr[m] for m in res_pr]
+        tmp_df_p = pd.concat(tmp_p, axis=0, ignore_index=True)
+        agg_df_p = compute_average_predictions(tmp_df_p, grp_cols=["seq_id", "dataset_name"])
+        p_test["pred_pridict2_hek"] = agg_df_p.loc[agg_df_p["dataset_name"] == "HEK", "pred_averageedited"].values * 100
     p_test["Measured_PE_efficiency"] = p_test["HEKaverageedited_clamped"].values * 100
 
     # DeepPrime & DeepPrime6 predictions via preprocess_data
@@ -273,12 +290,12 @@ def main():
         seq_wt = r["wide_initial_target"]
         seq_mut = r["wide_mutated_target"]
         nick = p_loc[1]
-        edit_pos = int(r["deepeditposition"]) - nick    # DeepPrime way: The relative position from the nick
+        edit_pos = int(r["deepeditposition"]) - nick + 1  # DeepPrime 1-based position relative to nick
         prep_records.append({
             "orig_id": r["orig_id"],
             "WideTargetSequence": seq_wt[5:79],
-            "Guide": seq_wt[9:29],
-            "leading G": "",
+            "Guide": seq_wt[10:29],
+            "leading G": seq_wt[9:10],
             "PBS": reverse_complement(seq_wt[p_loc[0]:p_loc[1]]),
             "RTT": reverse_complement(seq_mut[rt_loc[0]:rt_loc[1]]),
             "Edit length": int(r["Correction_Length"]),
@@ -300,6 +317,7 @@ def main():
     p_prep_renamed = p_prep_df.rename(columns=feature_rename_map)
     p_prep_sorted = p_prep_renamed.sort_values("orig_id").reset_index(drop=True)
     assert (p_prep_sorted["orig_id"].values == p_test["orig_id"].values).all(), "Row alignment failed!"
+    p_prep_sorted.to_parquet(os.path.join(OUTPUT_DIR, "pridict2_test_dp_biofeatures.parquet"), index=False)
 
     p_dp_preds = run_deepprime_inference(
         p_prep_sorted["Target"].str.upper().tolist(),
@@ -322,17 +340,17 @@ def main():
         "Measured_PE_efficiency", "pred_dp_base", "pred_pridict2_hek", "pred_dp6_pe6a", "pred_dp6_pe6b", "pred_dp6_pe6c", "pred_dp6_drnaseh"
     ]
     p_test_out = p_test[pr_out_cols].copy()
-    for d in [OUTPUT_DIR, EXP_DIR, PLOTS_DIR]:
+    for d in [OUTPUT_DIR, PLOTS_DIR]:
         p_test_out.to_csv(os.path.join(d, "pridict2_test_predictions.csv"), index=False)
         p_test_out.to_csv(os.path.join(d, "pridict2_test_raw_predictions.csv"), index=False)
-    print(f"  Saved filtered predictions to {OUTPUT_DIR}, {EXP_DIR}, and {PLOTS_DIR}", flush=True)
+    print(f"  Saved filtered predictions to {OUTPUT_DIR} and {PLOTS_DIR}", flush=True)
 
     # ---------------------------------------------------------
     # 4. Performance Metrics Comparison
     # ---------------------------------------------------------
     print("\n--- 4. Computing Metrics on Strictly Unseen Filtered Datasets ---", flush=True)
     models_to_eval = [
-        ("DeepPrime-base", "pred_dp_base"),
+        ("DeepPrime-FT", "pred_dp_base"),
         ("PRIDICT2.0", "pred_pridict2_hek"),
         ("DeepPrime6-pe6a", "pred_dp6_pe6a"),
         ("DeepPrime6-pe6b", "pred_dp6_pe6b"),
@@ -356,7 +374,6 @@ def main():
         })
     dp_perf_df = pd.DataFrame(dp_perf_rows)
     dp_perf_df.to_csv(os.path.join(OUTPUT_DIR, "deepprime_test_performance.csv"), index=False)
-    dp_perf_df.to_csv(os.path.join(EXP_DIR, "deepprime_test_performance.csv"), index=False)
 
     # PRIDICT2 Performance Table
     pr_perf_rows = []
@@ -374,12 +391,10 @@ def main():
         })
     pr_perf_df = pd.DataFrame(pr_perf_rows)
     pr_perf_df.to_csv(os.path.join(OUTPUT_DIR, "pridict2_test_performance.csv"), index=False)
-    pr_perf_df.to_csv(os.path.join(EXP_DIR, "pridict2_test_performance.csv"), index=False)
 
     # Combined Performance Summary for plots directory
     perf_summary_combined = pd.concat([dp_perf_df, pr_perf_df], ignore_index=True)
     perf_summary_combined.to_csv(os.path.join(PLOTS_DIR, "performance_summary.csv"), index=False)
-    perf_summary_combined.to_csv(os.path.join(EXP_DIR, "performance_summary.csv"), index=False)
 
     # Print Results
     print("\n=======================================================", flush=True)

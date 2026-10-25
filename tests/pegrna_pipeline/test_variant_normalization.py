@@ -33,13 +33,19 @@ def test_get_edit_type_and_length():
     assert t == "Sub"
     assert length == 1
 
-    # Insertion
-    t, length = get_edit_type_and_length("A", "ACT")
+    # Insertion (trimmed ref/alt or VCF-style anchor base)
+    t, length = get_edit_type_and_length("", "ACT")
     assert t == "Ins"
     assert length == 3
+    t, length = get_edit_type_and_length("A", "ACT")
+    assert t == "Ins"
+    assert length == 2
 
-    # Deletion
-    t, length = get_edit_type_and_length("ACT", "A")
+    # Deletion (trimmed ref/alt or VCF-style anchor base)
+    t, length = get_edit_type_and_length("ACT", "")
     assert t == "Del"
     assert length == 3
+    t, length = get_edit_type_and_length("ACT", "A")
+    assert t == "Del"
+    assert length == 2
 

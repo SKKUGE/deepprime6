@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from src.utils.dataprep import AVG_PAIR
+from src.utils.dataprep import AVG_PAIR, get_pe6_qc_mask
 
 
 class PE6DeepPrimeDataset(Dataset):
@@ -24,39 +24,23 @@ class PE6DeepPrimeDataset(Dataset):
         ), "The current implementation only supports one PE type"
         t = datafilter["PE_types"][0]
         if read_count_filter > 0:
-            mask = pd.Series(True, index=data.index)
-            # 1. Total read counts >= read_count_filter for both replicates in AVG_PAIR
-            for r in AVG_PAIR.get(t, []):
-                if r in data.columns:
-                    mask = mask & (data[r] >= read_count_filter)
-
-            # 2. Background noise filter <= 5.0% for the control batches relevant to this PE system
-            batches_in_t = set()
-            for r in AVG_PAIR.get(t, []):
-                if "KMC" in r:
-                    batches_in_t.add("HEK-M-CTRL-7D-KMC")
-                elif "M2" in r:
-                    batches_in_t.add("HEK-M2-CTRL-7D-UAR")
-                elif "UAR" in r:
-                    batches_in_t.add("HEK-M-CTRL-7D-UAR")
-
-            for ctrl_prefix in batches_in_t:
-                ed_col = f"{ctrl_prefix}+edited_read_counts"
-                un_col = f"{ctrl_prefix}+unedited_read_counts"
-                if ed_col in data.columns and un_col in data.columns:
-                    ctrl_tot = data[ed_col] + data[un_col]
-                    bg = (data[ed_col] / ctrl_tot.replace(0, np.nan) * 100).fillna(0)
-                    mask = mask & (bg <= 5.0)
-
-            if t in data.columns:
-                mask = mask & data[t].notna()
-
+            mask = get_pe6_qc_mask(
+                data,
+                pe_type=t,
+                read_count_filter=read_count_filter,
+                max_ctrl_bg=5.0,
+            )
             filtered_data = data.loc[mask].copy()
         else:
             filtered_data = data
 
-        # Labels
-        self._label_col: List[str] = datafilter["PE_types"]
+        # Labels (gracefully fill with 0.0 for unlabeled inference datasets)
+        self._label_col: List[str] = list(datafilter["PE_types"])
+        for col in self._label_col:
+            if col not in filtered_data.columns:
+                filtered_data = filtered_data.copy()
+                filtered_data[col] = 0.0
+
         self.labels = torch.from_numpy(
             filtered_data[
                 [*self._label_col, "type_sub", "type_ins", "type_del"]
@@ -66,8 +50,13 @@ class PE6DeepPrimeDataset(Dataset):
         # TODO: Filter specific PE types
         self.data = filtered_data.drop(columns=self._label_col)
 
-        # Annotations for
-        self.annotations = filtered_data["ID"]
+        # Annotations for tracking sample IDs
+        if "ID" in filtered_data.columns:
+            self.annotations = filtered_data["ID"]
+        elif "REF_ID" in filtered_data.columns:
+            self.annotations = filtered_data["REF_ID"].astype(str)
+        else:
+            self.annotations = pd.Series(filtered_data.index.astype(str), index=filtered_data.index)
 
         # One-hot encoding for sequence data
         self.data["Target_encoded"] = self.data["Target"].apply(
@@ -188,17 +177,37 @@ class PE6DeepPrimeDataset(Dataset):
         return pe_dict[pe_type]
 
     def preprocess_biofeatures(self, biofeatures: pd.DataFrame) -> torch.Tensor:
-        """Preprocesses the given biofeatures by converting them into a tensor.
+        """Preprocesses the given biofeatures by converting them into a normalized numpy array.
 
         Args:
             biofeatures (pd.DataFrame): The biofeatures to preprocess.
 
         Returns:
-            torch.Tensor: The preprocessed biofeatures as a tensor.
+            np.ndarray: The preprocessed biofeatures array.
         """
+        feature_rename_map = {
+            "PBS_len": "PBSlen",
+            "RTT_len": "RTlen",
+            "RT-PBS_len": "RT-PBSlen",
+            "Tm1_PBS": "Tm1",
+            "Tm2_RTT_cTarget_sameLength": "Tm2",
+            "Tm3_RTT_cTarget_replaced": "Tm2new",
+            "Tm4_cDNA_PAM-oppositeTarget": "Tm3",
+            "Tm5_RTT_cDNA": "Tm4",
+            "deltaTm_Tm4-Tm2": "TmD",
+            "GC_count_PBS": "nGCcnt1",
+            "GC_count_RTT": "nGCcnt2",
+            "GC_count_RT-PBS": "nGCcnt3",
+            "GC_contents_PBS": "fGCcont1",
+            "GC_contents_RTT": "fGCcont2",
+            "GC_contents_RT-PBS": "fGCcont3",
+            "MFE_RT-PBS-polyT": "MFE3",
+            "MFE_Spacer": "MFE4",
+        }
+        biofeatures = biofeatures.rename(columns=feature_rename_map)
+
         if self.norm_mean is not None:
             # Check if norm_mean is a scalar or single-value Series
-            # Legacy
             is_scalar = False
             if isinstance(self.norm_mean, (float, int)):
                 is_scalar = True
@@ -209,37 +218,78 @@ class PE6DeepPrimeDataset(Dataset):
                     self.norm_std = self.norm_std.iloc[0]
                 is_scalar = True
 
-            if not is_scalar:
-                # Rename columns to match DeepPrime original feature names
-                # Derived from manual mapping based on feature definitions
-                feature_rename_map = {
-                    "PBS_len": "PBSlen",
-                    "RTT_len": "RTlen",
-                    "RT-PBS_len": "RT-PBSlen",
-                    "Tm1_PBS": "Tm1",
-                    "Tm2_RTT_cTarget_sameLength": "Tm2",
-                    "Tm3_RTT_cTarget_replaced": "Tm2new",
-                    "Tm4_cDNA_PAM-oppositeTarget": "Tm3",
-                    "Tm5_RTT_cDNA": "Tm4",
-                    "deltaTm_Tm4-Tm2": "TmD",
-                    "GC_count_PBS": "nGCcnt1",
-                    "GC_count_RTT": "nGCcnt2",
-                    "GC_count_RT-PBS": "nGCcnt3",
-                    "GC_contents_PBS": "fGCcont1",
-                    "GC_contents_RTT": "fGCcont2",
-                    "GC_contents_RT-PBS": "fGCcont3",
-                    "MFE_RT-PBS-polyT": "MFE3",
-                    "MFE_Spacer": "MFE4",
-                }
-                biofeatures = biofeatures.rename(columns=feature_rename_map)
+            if not is_scalar and isinstance(self.norm_mean, (pd.Series, pd.DataFrame)):
+                norm_mean_s = (
+                    self.norm_mean.squeeze()
+                    if isinstance(self.norm_mean, pd.DataFrame)
+                    else self.norm_mean
+                )
+                if (
+                    "Tm3" in norm_mean_s.index
+                    and "Tm3" in biofeatures.columns
+                    and "TmD" in biofeatures.columns
+                ):
+                    if float(norm_mean_s["Tm3"]) > 0.0:
+                        tm3_arr = biofeatures["Tm3"].to_numpy(dtype=np.float32, copy=True)
+                        tmd_arr = biofeatures["TmD"].to_numpy(dtype=np.float32, copy=True)
+                        char_mask = tm3_arr < -50.0
+                        if np.any(char_mask):
+                            rt_len_arr = biofeatures["RTlen"].to_numpy(dtype=np.float32)
+                            gc_rtt_arr = biofeatures["nGCcnt2"].to_numpy(dtype=np.float32)
+                            tm2_arr = biofeatures["Tm2"].to_numpy(dtype=np.float32)
+                            wallace_tm3 = 2.0 * rt_len_arr + 2.0 * gc_rtt_arr
+                            tm3_arr[char_mask] = wallace_tm3[char_mask]
+                            tmd_arr[char_mask] = wallace_tm3[char_mask] - tm2_arr[char_mask]
+                            biofeatures = biofeatures.copy()
+                            biofeatures["Tm3"] = tm3_arr
+                            biofeatures["TmD"] = tmd_arr
+                    elif float(norm_mean_s["Tm3"]) < -50.0:
+                        tm3_arr = biofeatures["Tm3"].to_numpy(dtype=np.float32, copy=True)
+                        tmd_arr = biofeatures["TmD"].to_numpy(dtype=np.float32, copy=True)
+                        pos_mask = tm3_arr > 0.0
+                        if np.any(pos_mask):
+                            legacy_vals = np.full(len(biofeatures), np.nan, dtype=np.float32)
+                            if (
+                                hasattr(self, "data")
+                                and "Tm4_cDNA_PAM_oppositeTarget_seq" in self.data.columns
+                            ):
+                                from Bio.Seq import Seq
+                                from Bio.SeqUtils import MeltingTemp as mt
+
+                                seq_col = self.data["Tm4_cDNA_PAM_oppositeTarget_seq"].values
+                                for idx in np.where(pos_mask)[0]:
+                                    pair = seq_col[idx]
+                                    if isinstance(pair, (list, tuple, np.ndarray)) and len(pair) == 2:
+                                        s1, s2 = str(pair[0]), str(pair[1])
+                                        last_tm = 0.0
+                                        for c1, c2 in zip(s1, s2):
+                                            try:
+                                                last_tm = mt.Tm_NN(
+                                                    seq=Seq(c1), c_seq=Seq(c2), nn_table=mt.DNA_NN3
+                                                )
+                                            except Exception:
+                                                pass
+                                        legacy_vals[idx] = last_tm
+                            valid_legacy = ~np.isnan(legacy_vals)
+                            tm3_arr[pos_mask & valid_legacy] = legacy_vals[pos_mask & valid_legacy]
+                            tm3_arr[pos_mask & ~valid_legacy] = float(norm_mean_s["Tm3"])
+                            tm2_arr = biofeatures["Tm2"].to_numpy(dtype=np.float32)
+                            tmd_arr[pos_mask & valid_legacy] = (
+                                tm3_arr[pos_mask & valid_legacy] - tm2_arr[pos_mask & valid_legacy]
+                            )
+                            tmd_arr[pos_mask & ~valid_legacy] = float(norm_mean_s["TmD"])
+                            biofeatures = biofeatures.copy()
+                            biofeatures["Tm3"] = tm3_arr
+                            biofeatures["TmD"] = tmd_arr
 
                 # Filter and reorder biofeatures to match norm_mean's index (feature list)
-                # Only if norm_mean has an index (is not scalar)
-                if isinstance(self.norm_mean, (pd.Series, pd.DataFrame)):
-                    biofeatures = biofeatures[self.norm_mean.index]
+                biofeatures = biofeatures[self.norm_mean.index]
 
         norm_mean = self.norm_mean if self.norm_mean is not None else biofeatures.mean()
         norm_std = self.norm_std if self.norm_std is not None else biofeatures.std()
+
+        self.norm_mean = norm_mean
+        self.norm_std = norm_std
 
         norm_biofeatures = (biofeatures - norm_mean) / norm_std
         norm_biofeatures = norm_biofeatures.fillna(0)  # Divide by zero fix

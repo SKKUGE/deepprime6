@@ -42,7 +42,13 @@ def main():
     models_arg = [m.strip().lower() for m in args.models.split(",")]
     include_all = "all" in models_arg
     inc_base = include_all or "base" in models_arg or "dp_base" in models_arg
-    inc_ft = include_all or "ft" in models_arg or "dp6_ft" in models_arg or "dp6" in models_arg
+    inc_ft = (
+        include_all
+        or "ft" in models_arg
+        or "dp6_ft" in models_arg
+        or "dp6" in models_arg
+        or any(m in ["pe6a", "pe6b", "pe6c", "drnaseh", "pe6"] for m in models_arg)
+    )
     inc_scratch = include_all or "scratch" in models_arg or "dp6_scratch" in models_arg
     inc_pridict2 = include_all or "pridict2" in models_arg
 

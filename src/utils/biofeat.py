@@ -166,7 +166,10 @@ def feature_transform_dataframe(
     for idx, r in df.iterrows():
         storage.append(
             _feature_extraction(
-                r, pam_length, upstream_flanking_length, downstream_flanking_length
+                r,
+                pam_length=pam_length,
+                upstream_flanking_length=upstream_flanking_length,
+                downstream_flanking_length=downstream_flanking_length,
             )
         )
     transformed = pd.DataFrame(storage)

@@ -58,7 +58,7 @@ def process_row_features(row_tuple):
     
     # 2. Tm NN
     try:
-        tm1 = mt.Tm_NN(transcribe(pbs))
+        tm1 = mt.Tm_NN(transcribe(pbs), nn_table=mt.R_DNA_NN1)
     except Exception:
         tm1 = 0.0
         
@@ -73,7 +73,7 @@ def process_row_features(row_tuple):
         tm2 = mt.Tm_NN(wt_rc_rtt)
         tm3 = tm2
         tm4 = mt.Tm_NN(reverse_complement(rtt), c_seq=reverse_complement(wt_rc_rtt))
-        tm5 = mt.Tm_NN(transcribe(rtt))
+        tm5 = mt.Tm_NN(transcribe(rtt), nn_table=mt.R_DNA_NN1)
     except Exception:
         tm2, tm3, tm4, tm5 = 0.0, 0.0, 0.0, 0.0
         
@@ -139,6 +139,7 @@ def process_row_features(row_tuple):
         'MFE_RT-PBS-polyT': round(fMFE3, 1),
         'MFE_Spacer': round(fMFE4, 1),
         'spacer': spacer_no_x,
+        'nick_site': nick_site,
         'seq30': seq30,
         'Masked_EditSeq_74': masked_edit_seq,
         'Target_74': target_74_padded
@@ -186,9 +187,8 @@ def setup_logging():
             h.setFormatter(fmt)
             logger.addHandler(h)
 
-# NOTE: FINAL_v6_ALL_INFO.csv (provided by a coworker, out of scope for this repo) has Edit_type/Edit_len
-# values that are internally inconsistent (e.g. 'c.1646del' labelled 'Sub' with Edit_len=0). It is
-# intentionally NOT used as input here; if it is ever used, its Edit_type column must be cleaned first.
+# NOTE: Legacy summary tables with inconsistent Edit_type/Edit_len annotations (e.g. 'c.1646del'
+# labelled 'Sub' with Edit_len=0) are intentionally excluded; clean Edit_type columns before use.
 def resolve_edit_type(df):
     """Per-row edit type ('Sub'/'Ins'/'Del') from input columns; falls back to 'Sub' with error logs."""
     n = len(df)

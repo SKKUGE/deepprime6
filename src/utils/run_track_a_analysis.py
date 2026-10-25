@@ -39,16 +39,6 @@ def resolve_paths():
         figures_dir = "figures"
         results_dir = "results"
         mirror_dirs = ["../../notebooks/plots"] if os.path.isdir("../../notebooks/plots") else []
-    elif os.path.exists("experiments/20261008_panelB_base_architecture_revalidation/predictions"):
-        data_dirs = ["data", "experiments/20261008_panelB_base_architecture_revalidation/predictions"]
-        panels_dir = "notebooks/plots"
-        figures_dir = "notebooks/plots"
-        results_dir = "notebooks/plots"
-        mirror_dirs = [
-            "experiments/20261008_panelB_base_architecture_revalidation/panels",
-            "experiments/20261008_panelB_base_architecture_revalidation/figures",
-            "experiments/20261008_panelB_base_architecture_revalidation/results"
-        ]
     else:
         data_dirs = ["data", "predictions"]
         panels_dir = "notebooks/plots"
@@ -206,17 +196,28 @@ def load_and_merge_data():
         else:
             df = df.merge(pred_df, left_on=ref_col, right_on='ID', how='left').drop(columns=['ID'])
             
+    import sys
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    from src.utils.dataprep import IDX_TO_PE_TYPE, get_pe6_qc_mask
+
     for i in range(1, 10):
         col_clean = f'Normalized+2rep_HEK-M-{i}-7D+pe_ratio_%'
         rep_cols = [
-            f'Normalized+HEK-M-{i}-7D-UAR+pe_ratio_%',
-            f'Normalized+HEK-M2-{i}-7D-UAR+pe_ratio_%'
+            f'Normalized+HEK-M-{i}-7D-B1+pe_ratio_%',
+            f'Normalized+HEK-M2-{i}-7D-B1+pe_ratio_%'
         ]
         valid_reps = [c for c in rep_cols if c in df.columns]
         if len(valid_reps) > 0:
-            df[col_clean] = df[valid_reps].mean(axis=1)
-            # Ensure col_3rep alias holds the clean 2-rep mean without degraded KMC
+            df[col_clean] = np.maximum(0.0, df[valid_reps].mean(axis=1))
+            pe_type = IDX_TO_PE_TYPE[i]
+            qc_mask = get_pe6_qc_mask(df, pe_type=pe_type, read_count_filter=200, max_ctrl_bg=5.0)
+            df.loc[~qc_mask, col_clean] = np.nan
+            # Ensure col_3rep alias holds the QC-filtered clean 2-rep mean
             df[f'Normalized+3rep_HEK-M-{i}-7D+pe_ratio_%'] = df[col_clean]
+            if pe_type in df.columns:
+                df.loc[~qc_mask, pe_type] = np.nan
     
     df = df.loc[:, ~df.columns.duplicated()]
     print(f"Merged dataset shape: {df.shape}")
@@ -261,11 +262,11 @@ def calculate_correlations(df, cohort_name):
             'Domain': domain,
             'N': n_samples,
             'Spearman_PRIDICT2': sp_pri,
-            'Spearman_DeepPrime_Base': sp_base,
+            'Spearman_DeepPrime_FT': sp_base,
             'Spearman_From_Scratch': sp_sc,
             'Spearman_DeepPrime6': sp_dp6,
             'Pearson_PRIDICT2': pe_pri,
-            'Pearson_DeepPrime_Base': pe_base,
+            'Pearson_DeepPrime_FT': pe_base,
             'Pearson_From_Scratch': pe_sc,
             'Pearson_DeepPrime6': pe_dp6
         })
@@ -294,8 +295,8 @@ def generate_visualizations(df, res_df, cohort_name):
     
     # Plot 1: Heatmap comparison of Spearman correlations
     plt.figure(figsize=(11, 5))
-    heatmap_cols = ['Spearman_PRIDICT2', 'Spearman_DeepPrime_Base']
-    col_names = ['PRIDICT2.0 (HEK)', 'DeepPrime (Base)']
+    heatmap_cols = ['Spearman_PRIDICT2', 'Spearman_DeepPrime_FT']
+    col_names = ['PRIDICT2.0 (HEK)', 'DeepPrime-FT']
     if 'Spearman_From_Scratch' in res_df.columns and not res_df['Spearman_From_Scratch'].isna().all():
         heatmap_cols.append('Spearman_From_Scratch')
         col_names.append('From scratch')
@@ -313,8 +314,8 @@ def generate_visualizations(df, res_df, cohort_name):
     
     # Plot 2: Heatmap comparison of Pearson correlations
     plt.figure(figsize=(11, 5))
-    pe_cols = ['Pearson_PRIDICT2', 'Pearson_DeepPrime_Base']
-    pe_names = ['PRIDICT2.0 (HEK)', 'DeepPrime (Base)']
+    pe_cols = ['Pearson_PRIDICT2', 'Pearson_DeepPrime_FT']
+    pe_names = ['PRIDICT2.0 (HEK)', 'DeepPrime-FT']
     if 'Pearson_From_Scratch' in res_df.columns and not res_df['Pearson_From_Scratch'].isna().all():
         pe_cols.append('Pearson_From_Scratch')
         pe_names.append('From scratch')
@@ -370,7 +371,7 @@ def generate_visualizations(df, res_df, cohort_name):
             gt_col: f"Measured ({domain_name})",
             pred_col: "DeepPrime6" if "dp6" in pred_col else pred_col,
             sc_col: "From-Scratch" if sc_col else None,
-            'pred_dp_base': "DeepPrime-Base",
+            'pred_dp_base': "DeepPrime-FT",
             'pred_pridict2_hek': "PRIDICT2.0"
         }
         rename_map = {k: v for k, v in rename_map.items() if k is not None}
@@ -420,9 +421,9 @@ def generate_grouped_bar_plots(df):
         
         row_dict = {
             'Domain': dom,
-            'DeepPrime': sp_base,
-            'DeepPrime_err_lower': sp_base - sp_base_ci[0],
-            'DeepPrime_err_upper': sp_base_ci[1] - sp_base,
+            'DeepPrime-FT': sp_base,
+            'DeepPrime-FT_err_lower': sp_base - sp_base_ci[0],
+            'DeepPrime-FT_err_upper': sp_base_ci[1] - sp_base,
             'PRIDICT2.0': sp_pri,
             'PRIDICT2.0_err_lower': sp_pri - sp_pri_ci[0],
             'PRIDICT2.0_err_upper': sp_pri_ci[1] - sp_pri,
@@ -442,22 +443,22 @@ def generate_grouped_bar_plots(df):
         
     b_df = pd.DataFrame(panel_b_data)
     
-    # 1. ORIGINAL PANEL B (DeepPrime, From scratch, DeepPrime + FT) - Exactly matches paper figure
+    # 1. ORIGINAL PANEL B (DeepPrime-FT, From scratch, DeepPrime6) - Matches paper figure
     if 'From_Scratch' in b_df.columns:
         sns.set_theme(style="ticks")
         fig, ax = plt.subplots(figsize=(6.5, 5), dpi=300)
         x = np.arange(len(b_df))
         width = 0.24
         
-        ax.bar(x - width, b_df['DeepPrime'], width, 
-               yerr=[b_df['DeepPrime_err_lower'], b_df['DeepPrime_err_upper']], 
-               label='DeepPrime', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3.5, error_kw={'elinewidth': 1})
+        ax.bar(x - width, b_df['DeepPrime-FT'], width, 
+               yerr=[b_df['DeepPrime-FT_err_lower'], b_df['DeepPrime-FT_err_upper']], 
+               label='DeepPrime-FT', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3.5, error_kw={'elinewidth': 1})
         ax.bar(x, b_df['From_Scratch'], width, 
                yerr=[b_df['From_Scratch_err_lower'], b_df['From_Scratch_err_upper']], 
                label='From scratch', color='#B3E2CD', edgecolor='black', linewidth=0.8, capsize=3.5, error_kw={'elinewidth': 1})
         ax.bar(x + width, b_df['DeepPrime6'], width, 
                yerr=[b_df['DeepPrime6_err_lower'], b_df['DeepPrime6_err_upper']], 
-               label='DeepPrime + FT', color='#FBB4AE', edgecolor='black', linewidth=0.8, capsize=3.5, error_kw={'elinewidth': 1})
+               label='DeepPrime6', color='#FBB4AE', edgecolor='black', linewidth=0.8, capsize=3.5, error_kw={'elinewidth': 1})
                
         ax.set_ylabel("Spearman's correlation", fontsize=13)
         ax.set_xticks(x)
@@ -473,7 +474,7 @@ def generate_grouped_bar_plots(df):
         plt.close()
         print("Saved Original From Scratch Panel B (PNG and SVG).")
 
-    # 2. EXTENDED 4-MODEL PANEL B (DeepPrime-Base, PRIDICT2.0, From Scratch, DeepPrime6)
+    # 2. EXTENDED 4-MODEL PANEL B (DeepPrime-FT, PRIDICT2.0, From Scratch, DeepPrime6)
     sns.set_theme(style="ticks")
     fig, ax = plt.subplots(figsize=(8.5, 5), dpi=300)
     x = np.arange(len(b_df))
@@ -481,9 +482,9 @@ def generate_grouped_bar_plots(df):
     
     if has_sc:
         width = 0.18
-        ax.bar(x - 1.5*width, b_df['DeepPrime'], width, 
-               yerr=[b_df['DeepPrime_err_lower'], b_df['DeepPrime_err_upper']], 
-               label='DeepPrime-Base', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
+        ax.bar(x - 1.5*width, b_df['DeepPrime-FT'], width, 
+               yerr=[b_df['DeepPrime-FT_err_lower'], b_df['DeepPrime-FT_err_upper']], 
+               label='DeepPrime-FT', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
         ax.bar(x - 0.5*width, b_df['PRIDICT2.0'], width, 
                yerr=[b_df['PRIDICT2.0_err_lower'], b_df['PRIDICT2.0_err_upper']], 
                label='PRIDICT2.0', color='#8DD3C7', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
@@ -495,9 +496,9 @@ def generate_grouped_bar_plots(df):
                label='DeepPrime6', color='#FBB4AE', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
     else:
         width = 0.25
-        ax.bar(x - width, b_df['DeepPrime'], width, 
-               yerr=[b_df['DeepPrime_err_lower'], b_df['DeepPrime_err_upper']], 
-               label='DeepPrime-Base', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
+        ax.bar(x - width, b_df['DeepPrime-FT'], width, 
+               yerr=[b_df['DeepPrime-FT_err_lower'], b_df['DeepPrime-FT_err_upper']], 
+               label='DeepPrime-FT', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
         ax.bar(x, b_df['PRIDICT2.0'], width, 
                yerr=[b_df['PRIDICT2.0_err_lower'], b_df['PRIDICT2.0_err_upper']], 
                label='PRIDICT2.0', color='#8DD3C7', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
@@ -527,8 +528,8 @@ def generate_grouped_bar_plots(df):
         edit_type = row['Edit_type'] if 'Edit_type' in row else row.get('Edit type', '')
         if str(edit_type).capitalize() == 'Sub' and 1 <= edit_len <= 3:
             return '1-3 nt substitution'
-        elif str(edit_type).capitalize() == 'Del' and 1 <= edit_len <= 3:
-            return '1-3 nt deletion'
+        elif str(edit_type).capitalize() == 'Del' and 1 <= edit_len <= 4:
+            return '1-4 nt deletion'
         elif str(edit_type).capitalize() == 'Ins' and 1 <= edit_len <= 3:
             return '1-3 nt insertion'
         elif str(edit_type).capitalize() == 'Ins' and 3 < edit_len <= 19:
@@ -561,6 +562,7 @@ def generate_grouped_bar_plots(df):
         panel_c_data.append(dom_res)
         
     c_df = pd.DataFrame(panel_c_data)
+    save_csv(c_df, "Panel_C_edit_type_performance_summary.csv")
     
     fig, ax = plt.subplots(figsize=(7, 5))
     x = np.arange(len(c_df))
@@ -580,6 +582,7 @@ def generate_grouped_bar_plots(df):
     plt.title("C", loc='left', fontsize=20, fontweight='bold', pad=10)
     plt.tight_layout()
     save_fig(plt, "Panel_C_EditType_Comparison.png", is_panel=True)
+    save_fig(plt, "Panel_C_EditType_Comparison.svg", is_panel=True, format="svg")
     plt.close()
     
     print("Saved Panel B and Panel C plots successfully.")

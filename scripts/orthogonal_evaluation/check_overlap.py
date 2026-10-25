@@ -42,8 +42,12 @@ def main():
     # 1. Our full library & our training set
     pe6_full = pd.read_csv("data/Library design/pairwise_library_design/FULL_LIBRARY/results/pe6_full_library.csv")
     rq3_test = pd.read_parquet("data/rq3_test_library.parquet")
-    test_ref_ids = set(rq3_test["REF_ID"])
-    pe6_train = pe6_full[~pe6_full["REF_ID"].isin(test_ref_ids)].copy()
+    if "REF_ID" in rq3_test.columns:
+        test_ref_ids = set(rq3_test["REF_ID"])
+        pe6_train = pe6_full[~pe6_full["REF_ID"].isin(test_ref_ids)].copy()
+    else:
+        test_guides = set(rq3_test["Guide"].dropna().str.upper())
+        pe6_train = pe6_full[~pe6_full["Guide"].str.upper().isin(test_guides)].copy()
     
     print(f"Our Full Library (pe6_full_library.csv): {len(pe6_full):,} rows", flush=True)
     print(f"Our Internal Test Set (rq3_test_library): {len(rq3_test):,} rows", flush=True)

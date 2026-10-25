@@ -1,4 +1,7 @@
 #!/bin/bash
+set -e
+
+PYTHON_EXEC="${PYTHON_EXEC:-python}"
 
 # Default values
 EXPERIMENT="pe6a-DP-baseline"
@@ -50,6 +53,6 @@ if [ "$#" -gt 0 ]; then
 fi
 echo "=================================================================="
 
-python src/eval.py experiment="$EXPERIMENT" ckpt_path="$CKPT_PATH" "$@"
+$PYTHON_EXEC src/eval.py experiment="$EXPERIMENT" ckpt_path="$CKPT_PATH" "$@"
 
 echo "Evaluation completed."

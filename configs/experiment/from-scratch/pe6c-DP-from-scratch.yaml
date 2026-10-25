@@ -1,0 +1,41 @@
+# @package _global_
+
+defaults:
+- override /callbacks: default
+- override /data: pe6
+- override /model: pe6_deep_prime_only
+- override /trainer: default
+- override /logger: csv
+model:
+  model_weights:
+    baseline: null
+    requires_grad: true
+    num_ensemble: 20
+  optimizer:
+    lr: 0.00496
+  scheduler:
+    T_0: 40
+    T_mult: 1
+  criterion:
+    scale_threshold: 3.6135
+    minimum_scaling_factor: 4.7498
+    alpha: 5.7546
+train: true
+test: true
+task_name: PE6c-scratch
+tags:
+- 6c-scratch
+- deep-prime-scratch
+- from-scratch
+seed: 42
+data:
+  data_dir: ${paths.data_dir}/processed_data_dedup.parquet
+  batch_size: 256
+  skip_preprocessing: true
+  datasplit:
+    group_column: Guide
+    test_size: 0.2
+    val_size: 0.25
+  datafilter:
+    PE_types:
+    - PE6c(+PEmaxCas9)
