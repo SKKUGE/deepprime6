@@ -42,21 +42,45 @@ def main():
     print("Loading PRIDICT2.0 models...")
     pridict_models = load_pridict_model(run_ids=[0])
     
-    # Map to PRIDICT2 input format
+    # Map to PRIDICT2 input format (strip any 'N' padding from 201-bp context windows)
     pr_input_df = pd.DataFrame()
     pr_input_df['REF_ID'] = df['design_id']
-    pr_input_df['WildTypeSequence'] = df['WT_context']
-    pr_input_df['PrimeEditedSequence'] = df['Edited_context']
-    # PRIDICT2 expects 'Sub', 'Ins', 'Del'. The feat_df already mapped this to some extent?
-    # Actually, in PRIDICT2 prediction loop they often hardcode 'Sub' or use proper. 
-    # Let's derive it from length
+
     def get_pr_edit_type(row):
-        ref, alt = row['REF'], row['ALT']
-        if len(ref) == len(alt): return 'Sub'
-        elif len(ref) > len(alt): return 'Del'
-        else: return 'Ins'
+        if 'edit_type' in row and pd.notna(row['edit_type']) and str(row['edit_type']).capitalize() in ('Sub', 'Ins', 'Del'):
+            return str(row['edit_type']).capitalize()
+        vtype = str(row.get('variation_type', '')).lower()
+        if 'del' in vtype and 'ins' not in vtype:
+            return 'Del'
+        ref, alt = str(row.get('REF', '')), str(row.get('ALT', ''))
+        if len(ref) == len(alt): 
+            return 'Sub'
+        elif len(ref) > len(alt): 
+            return 'Del'
+        else: 
+            return 'Ins'
+
     pr_input_df['Edit_type'] = df.apply(get_pr_edit_type, axis=1)
-    
+    wt_clean = df['WT_context'].astype(str).str.replace('N', '', regex=False)
+    ed_clean = df['Edited_context'].astype(str).str.replace('N', '', regex=False)
+    cleaned_eds = []
+    for idx, (w_s, e_s, et) in enumerate(zip(wt_clean, ed_clean, pr_input_df['Edit_type'])):
+        if et == 'Del' and len(e_s) == len(w_s):
+            row = df.iloc[idx]
+            ref, alt = str(row.get('REF', '')), str(row.get('ALT', ''))
+            del_len = len(ref) - len(alt) if len(ref) > len(alt) else 1
+            if 'edit_len' in row and pd.notna(row['edit_len']) and int(row['edit_len']) > 0:
+                del_len = int(row['edit_len'])
+            elif 'Edit_len' in row and pd.notna(row['Edit_len']) and int(row['Edit_len']) > 0:
+                del_len = int(row['Edit_len'])
+            elif 'Edit length' in row and pd.notna(row['Edit length']) and int(row['Edit length']) > 0:
+                del_len = int(row['Edit length'])
+            cleaned_eds.append(e_s[:-del_len] if len(e_s) > del_len else e_s)
+        else:
+            cleaned_eds.append(e_s)
+    pr_input_df['WildTypeSequence'] = wt_clean.values
+    pr_input_df['PrimeEditedSequence'] = cleaned_eds
+
     pr_input_df['Guide'] = df['spacer']
     pr_input_df['PBS'] = df['PBS_sequence']
     pr_input_df['RTT'] = df['RTT_sequence']

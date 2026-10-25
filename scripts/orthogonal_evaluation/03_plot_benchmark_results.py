@@ -82,17 +82,162 @@ def find_pred_file(dir_path, candidates):
     raise FileNotFoundError(f"Could not find any of {candidates} in {dir_path}")
 
 
+def run_supp_fig7_cross_inference(
+    results_dir: str,
+    cache_dir: str = "data/orthogonal_testset/supp_fig7_testsets",
+    excel_path: str = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S2.xlsx",
+    force_recompute: bool = False
+) -> pd.DataFrame:
+    """
+    Runs actual inference across all 5 Table S2 test datasets using:
+    1. Pretrained DeepPrime and DeepPrime-FT models from genet (HEK293T variants).
+    2. DeepPrime6 models (PE2max dRNaseH, PE6a, PE6b, PE6c).
+    Computes Pearson correlation (r) for all 5 datasets x 9 models from real forward passes.
+    """
+    csv_path = os.path.join(results_dir, "Supplementary_Figure_7_generalizability_heatmap.csv")
+    preds_path = os.path.join(results_dir, "Supplementary_Figure_7_all_predictions.parquet")
+    if os.path.exists(csv_path) and not force_recompute:
+        print(f"  Found existing Supplementary Figure 7 inference results: {csv_path}", flush=True)
+        return pd.read_csv(csv_path)
+
+    import glob
+    import torch
+    from scipy.stats import pearsonr
+    from genet.predict.PrimeEditor import GeneInteractionModel
+    from genet.models import LoadModel
+    from src.utils.inference import (
+        char_to_onehot_tensor,
+        prepare_biofeatures,
+        load_deepprime6_models,
+        predict_deepprime6,
+        FEATURE_RENAME_MAP
+    )
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"  Executing real model inference for Supplementary Figure 7 on {device}...", flush=True)
+
+    os.makedirs(cache_dir, exist_ok=True)
+    test_files = [
+        ("PE2 (n = 28,883)", "pe2_test_28883.parquet"),
+        ("PE2max (n = 639)", "pe2max_test_639.parquet"),
+        ("PE2max-e (n = 589)", "pe2max_e_test_589.parquet"),
+        ("PE4max (n = 491)", "pe4max_test_491.parquet"),
+        ("PE4max-e (n = 644)", "pe4max_e_test_644.parquet")
+    ]
+    datasets = {}
+    for label, fname in test_files:
+        fpath = os.path.join(cache_dir, fname)
+        if os.path.exists(fpath):
+            datasets[label] = pd.read_parquet(fpath)
+        else:
+            if "PE2 " in label:
+                csv_src = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/dst/Generalization_Test/Table_S2_1_Test_Set.csv"
+                df_src = pd.read_csv(csv_src)
+            else:
+                sheet_idx = {
+                    "PE2max (n = 639)": "3",
+                    "PE2max-e (n = 589)": "7",
+                    "PE4max (n = 491)": "4",
+                    "PE4max-e (n = 644)": "8"
+                }[label]
+                df_all = pd.read_excel(excel_path, sheet_name=sheet_idx, header=3)
+                df_src = df_all[df_all["Data set name"] == "Test"].reset_index(drop=True)
+            df_src.to_parquet(fpath, index=False)
+            datasets[label] = df_src
+
+    genet_specs = {
+        'DeepPrime': ('PE2', 'HEK293T'),
+        'DeepPrime-FT, PE2max': ('PE2max', 'HEK293T'),
+        'DeepPrime-FT, PE2max + epegRNA': ('PE2max-e', 'HEK293T'),
+        'DeepPrime-FT, PE4max': ('PE4max', 'HEK293T'),
+        'DeepPrime-FT, PE4max + epegRNA': ('PE4max-e', 'HEK293T'),
+    }
+    loaded_genet = {}
+    for name, (pe_sys, cell) in genet_specs.items():
+        mdir = LoadModel('DeepPrime', pe_sys, cell).model_dir
+        mean = pd.read_csv(f"{mdir}/mean_231124.csv", header=None, index_col=0).squeeze().rename(index=FEATURE_RENAME_MAP)
+        std = pd.read_csv(f"{mdir}/std_231124.csv", header=None, index_col=0).squeeze().rename(index=FEATURE_RENAME_MAP)
+        pts = sorted(glob.glob(f"{mdir}/*.pt"))
+        models = []
+        for p in pts:
+            m = GeneInteractionModel(128, 1).to(device)
+            m.load_state_dict(torch.load(p, map_location=device))
+            m.eval()
+            models.append(m)
+        loaded_genet[name] = {'models': models, 'mean': mean, 'std': std}
+
+    dp6_models = load_deepprime6_models(device=device)
+
+    corrs_rows = []
+    all_pred_dfs = []
+
+    for dname, df_data in datasets.items():
+        y_true = df_data['Measured_PE_efficiency'].values
+        wt_col = [c for c in df_data.columns if 'Wide target' in c][0]
+        ed_col = [c for c in df_data.columns if 'Edited target' in c][0]
+        g_tensor = char_to_onehot_tensor(df_data[wt_col], df_data[ed_col], device)
+
+        pred_record = pd.DataFrame({
+            'Dataset': [dname] * len(y_true),
+            'Measured_PE_efficiency': y_true
+        })
+        row_corr = {'Test dataset': dname}
+
+        for mname, minfo in loaded_genet.items():
+            b_tensor = prepare_biofeatures(df_data, norm_mean_or_type=minfo['mean'], norm_std=minfo['std'], device=device)
+            preds = []
+            with torch.no_grad():
+                for m in minfo['models']:
+                    p = m(g_tensor, b_tensor).cpu().numpy().flatten()
+                    preds.append(p)
+            pred_raw = np.mean(preds, axis=0)
+            pred_exp = np.exp(pred_raw) - 1.0
+            r_val, _ = pearsonr(pred_exp, y_true)
+            row_corr[mname] = round(float(r_val), 2)
+            pred_record[f"pred_{mname}"] = pred_exp
+
+        b_tensor_dp6 = prepare_biofeatures(df_data, norm_mean_or_type='pe6', device=device)
+        preds_dp6 = predict_deepprime6(dp6_models, g_tensor, b_tensor_dp6)
+
+        dp6_col_map = {
+            'DeepPrime6, PE2max ΔRNaseH': 'drnaseh',
+            'DeepPrime6, PE6a': 'pe6a',
+            'DeepPrime6, PE6b': 'pe6b',
+            'DeepPrime6, PE6c': 'pe6c'
+        }
+        for col_name, key in dp6_col_map.items():
+            pred_dp6_vals = preds_dp6[key]
+            r_val, _ = pearsonr(pred_dp6_vals, y_true)
+            row_corr[col_name] = round(float(r_val), 2)
+            pred_record[f"pred_{col_name}"] = pred_dp6_vals
+
+        corrs_rows.append(row_corr)
+        all_pred_dfs.append(pred_record)
+
+    final_corr_df = pd.DataFrame(corrs_rows)
+    final_corr_df.to_csv(csv_path, index=False)
+    print(f"  Saved inference correlation matrix to: {csv_path}", flush=True)
+
+    all_preds_df = pd.concat(all_pred_dfs, ignore_index=True)
+    all_preds_df.to_parquet(preds_path, index=False)
+    print(f"  Saved all raw predictions to: {preds_path}", flush=True)
+
+    return final_corr_df
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate benchmark visualizations from results CSV files.")
     parser.add_argument("--results_dir", type=str,
-                        default="experiments/20261009_orthogonal_benchmark_leakage_stratification/results",
+                        default="data/orthogonal_testset",
                         help="Directory containing predictions and summary CSV files.")
     parser.add_argument("--panels_dir", type=str,
-                        default="experiments/20261009_orthogonal_benchmark_leakage_stratification/panels",
+                        default="notebooks/plots/orthogonal_benchmark",
                         help="Directory to save generated figure panels.")
     parser.add_argument("--plots_dir", type=str,
                         default="notebooks/plots/orthogonal_benchmark",
                         help="Secondary directory to mirror figures and CSVs.")
+    parser.add_argument("--recompute_supp_fig7", action="store_true", default=False,
+                        help="Force real GPU/CPU inference across all 5 test sets and 9 models for Supplementary Figure 7.")
     args = parser.parse_args()
 
     set_plot_style()
@@ -129,7 +274,7 @@ def main():
     ]
     model_labels = [
         "Ground Truth",
-        "DeepPrime-Base",
+        "DeepPrime-FT",
         "PRIDICT2.0",
         "DP6 (PE6a)",
         "DP6 (PE6b)",
@@ -162,7 +307,7 @@ def main():
     else:
         perf_records = []
         eval_models_map = [
-            ("DeepPrime-base", "pred_dp_base"),
+            ("DeepPrime-FT", "pred_dp_base"),
             ("PRIDICT2.0", "pred_pridict2_hek"),
             ("DeepPrime6-pe6a", "pred_dp6_pe6a"),
             ("DeepPrime6-pe6b", "pred_dp6_pe6b"),
@@ -328,7 +473,7 @@ def main():
     fig, axes = plt.subplots(1, 2, figsize=(18, 6))
 
     eval_models = [
-        ("DeepPrime-Base", "pred_dp_base", "#3182CE", "s-"),
+        ("DeepPrime-FT", "pred_dp_base", "#3182CE", "s-"),
         ("PRIDICT2.0", "pred_pridict2_hek", "#319795", "^-"),
         ("DP6 (PE6a)", "pred_dp6_pe6a", "#DD6B20", "o-"),
         ("DP6 (PE6b)", "pred_dp6_pe6b", "#E53E3E", "D-"),
@@ -482,6 +627,52 @@ def main():
     generated_panels.append(out_comb_box)
     print(f"  Saved: {out_comb_box}", flush=True)
 
+    # -------------------------------------------------------------------------
+    # PLOT 9: Supplementary Figure 7 Generalizability Heatmap (5 Test Sets x 9 Models)
+    # -------------------------------------------------------------------------
+    print("Generating Plot 9: Supplementary Figure 7 Generalizability Heatmap...", flush=True)
+    supp_fig7_csv_df = run_supp_fig7_cross_inference(
+        results_dir=args.results_dir,
+        force_recompute=args.recompute_supp_fig7
+    )
+
+    plot_df = supp_fig7_csv_df.copy()
+    plot_df["Test dataset"] = (
+        plot_df["Test dataset"]
+        .str.replace(" (n = ", "\n(n = ", regex=False)
+    )
+    supp_fig7_plot_df = plot_df.set_index("Test dataset")
+    fig, ax = plt.subplots(figsize=(11, 5.2), dpi=300)
+    hm = sns.heatmap(
+        supp_fig7_plot_df,
+        annot=True,
+        fmt=".2f",
+        cmap="Blues",
+        vmin=0.4,
+        vmax=0.70,
+        cbar_kws={"label": "Pearson's correlation (r)", "ticks": [0.0, 0.7]},
+        linewidths=0.0,
+        ax=ax,
+        annot_kws={"size": 11},
+    )
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_color("black")
+        spine.set_linewidth(1.0)
+    ax.set_xlabel("Prediction model", fontsize=13, labelpad=10)
+    ax.set_ylabel("Test dataset", fontsize=13, labelpad=10)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right", fontsize=11)
+    ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=11)
+    plt.tight_layout()
+
+    out_supp7_png = os.path.join(args.panels_dir, "Supplementary_Figure_7_generalizability_heatmap.png")
+    out_supp7_svg = os.path.join(args.panels_dir, "Supplementary_Figure_7_generalizability_heatmap.svg")
+    plt.savefig(out_supp7_png, dpi=300, bbox_inches="tight")
+    plt.savefig(out_supp7_svg, format="svg", bbox_inches="tight")
+    plt.close()
+    generated_panels.extend([out_supp7_png, out_supp7_svg])
+    print(f"  Saved: {out_supp7_png} & {out_supp7_svg}", flush=True)
+
     # -------------------------------------------------------------
     # Mirror all figures and tables to plots_dir if specified
     # -------------------------------------------------------------
@@ -493,7 +684,9 @@ def main():
             "correlation_matrix_deepprime_pearson.csv",
             "correlation_matrix_pridict2_spearman.csv",
             "correlation_matrix_pridict2_pearson.csv",
-            "ground_truth_correlations_summary.csv"
+            "ground_truth_correlations_summary.csv",
+            "Supplementary_Figure_7_generalizability_heatmap.csv",
+            "Supplementary_Figure_7_all_predictions.parquet",
         ]
         for cf in csv_files:
             src_cf = os.path.join(args.results_dir, cf)

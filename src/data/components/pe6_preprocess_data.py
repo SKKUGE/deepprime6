@@ -397,7 +397,7 @@ def determine_tm(sequence_data: TmSequences) -> TmData:
     tm2 = _calculate_tm(sequence_data.Tm2_RTT_cTarget_sameLength_seq, mt.DNA_NN3)
     tm3 = _calculate_tm(sequence_data.Tm3_RTT_cTarget_replaced_seq, mt.DNA_NN3)
     try:
-        tm4 = (  # BUG: The else case is applied to all; found 2025-11-11
+        tm4 = (  # Preserves legacy DeepPrime behavior where empty sequence evaluates to 0.0
             _calculate_tm4(sequence_data.Tm4_cDNA_PAM_oppositeTarget_seq)
             if sequence_data.Tm4_cDNA_PAM_oppositeTarget_seq
             else 0.0

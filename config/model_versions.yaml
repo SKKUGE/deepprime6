@@ -12,9 +12,23 @@ models:
     representative_checkpoint: "ensemble_average"
     aggregation: "ensemble"
     preserve_individual_scores: true
+    norm_mean: "src/models/weights/DeepPrime6-weights/pe6_mean.csv"
+    norm_std: "src/models/weights/DeepPrime6-weights/pe6_std.csv"
+  deepprime6_scratch:
+    version: "v6.0-scratch"
+    checkpoints:
+      PE6a: "src/models/weights/DeepPrime6-scratch-weights/pe6a_scratch.ckpt"
+      PE6b: "src/models/weights/DeepPrime6-scratch-weights/pe6b_scratch.ckpt"
+      PE6c: "src/models/weights/DeepPrime6-scratch-weights/pe6c_scratch.ckpt"
+      PEmaxdRNaseH: "src/models/weights/DeepPrime6-scratch-weights/pemaxdrnaseh_scratch.ckpt"
+    representative_checkpoint: "ensemble_average"
+    aggregation: "ensemble"
+    preserve_individual_scores: true
+    norm_mean: "src/models/weights/DeepPrime6-scratch-weights/pe6_mean.csv"
+    norm_std: "src/models/weights/DeepPrime6-scratch-weights/pe6_std.csv"
   pridict2:
     version: "v2.0"
-    checkpoint: "checkpoints/pridict2.pt"
+    checkpoint: "PRIDICT2/trained_models"
     cell_models:
       - "HEK293T"
       - "K562"
@@ -23,8 +37,8 @@ models:
     preserve_individual_scores: true
 
 environment:
-  python: "3.9"
-  cuda: "11.7"
+  python: "3.11"
+  cuda: "12.1"
   packages:
-    torch: "2.0.1"
-    pandas: "2.0.3"
+    torch: "2.3.1"
+    pandas: "2.1.4"

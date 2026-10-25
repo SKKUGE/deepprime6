@@ -4,7 +4,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="deepprime6",
-    version="0.1.0",
+    version="1.2.0",
     description="DeepPrime6: DeepPrime-based modeling and transfer learning for prime editing efficiency",
     author="SKKUGE",
     author_email="",

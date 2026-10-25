@@ -15,8 +15,17 @@ import sys
 import pandas as pd
 import numpy as np
 
-# Ensure project root is active working directory and in sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+def find_project_root():
+    curr = os.path.abspath(os.path.dirname(__file__))
+    while curr != os.path.dirname(curr):
+        if os.path.exists(os.path.join(curr, ".project-root")) or (
+            os.path.exists(os.path.join(curr, "PRIDICT2")) and os.path.exists(os.path.join(curr, "src"))
+        ):
+            return curr
+        curr = os.path.dirname(curr)
+    return os.path.abspath(os.getcwd())
+
+PROJECT_ROOT = find_project_root()
 os.chdir(PROJECT_ROOT)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -33,8 +42,12 @@ def main():
     # 1. Our full library & our training set
     pe6_full = pd.read_csv("data/Library design/pairwise_library_design/FULL_LIBRARY/results/pe6_full_library.csv")
     rq3_test = pd.read_parquet("data/rq3_test_library.parquet")
-    test_ref_ids = set(rq3_test["REF_ID"])
-    pe6_train = pe6_full[~pe6_full["REF_ID"].isin(test_ref_ids)].copy()
+    if "REF_ID" in rq3_test.columns:
+        test_ref_ids = set(rq3_test["REF_ID"])
+        pe6_train = pe6_full[~pe6_full["REF_ID"].isin(test_ref_ids)].copy()
+    else:
+        test_guides = set(rq3_test["Guide"].dropna().str.upper())
+        pe6_train = pe6_full[~pe6_full["Guide"].str.upper().isin(test_guides)].copy()
     
     print(f"Our Full Library (pe6_full_library.csv): {len(pe6_full):,} rows", flush=True)
     print(f"Our Internal Test Set (rq3_test_library): {len(rq3_test):,} rows", flush=True)

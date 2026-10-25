@@ -129,6 +129,8 @@ class PE6DataModule(LightningDataModule):
 
         Do not use it to assign state (self.x = y).
         """
+        if self.hparams.csv_path:
+            return
         if not self.hparams.skip_preprocessing:
             if not pathlib.Path(self.processed_data_path).exists():
                 output_filename = pathlib.Path(self.processed_data_path).name
@@ -160,19 +162,23 @@ class PE6DataModule(LightningDataModule):
         if stage == "predict" and self.hparams.csv_path:
             log.info(f"Loading prediction data from {self.hparams.csv_path}")
             if self.hparams.csv_path.endswith(".parquet"):
-                processed_df = pd.read_parquet(self.hparams.csv_path)
+                df = pd.read_parquet(self.hparams.csv_path)
             else:
                 df = pd.read_csv(self.hparams.csv_path)
-                # We need to preprocess if it's raw CSV
+
+            if (
+                self.hparams.skip_preprocessing
+                and "Target" in df.columns
+                and "Masked_EditSeq" in df.columns
+            ):
+                processed_df = df
+            else:
                 processed_df = preprocess_func(data=df)
-            
-            # Load normalization stats if possible
+
+            # Load normalization stats if provided
             norm_mean = None
             norm_std = None
-            if (
-                "norm_mean_path" in self.hparams.dataset
-                and "norm_std_path" in self.hparams.dataset
-            ):
+            if self.hparams.dataset.get("norm_mean_path") and self.hparams.dataset.get("norm_std_path"):
                 try:
                     norm_mean = pd.read_csv(
                         self.hparams.dataset.norm_mean_path, index_col=0, header=None
@@ -186,12 +192,11 @@ class PE6DataModule(LightningDataModule):
             self.data_predict = PE6DeepPrimeDataset(
                 processed_df,
                 self.hparams.datafilter,
-                read_count_filter=0, # No filter for prediction
+                read_count_filter=0,  # No filter for prediction
                 norm_mean=norm_mean,
                 norm_std=norm_std,
             )
             return
-
 
         # Divide batch size by the number of devices.
         if self.trainer is not None:
@@ -214,6 +219,12 @@ class PE6DataModule(LightningDataModule):
                 data: pd.DataFrame = pd.read_csv(data_path)
             else:
                 data: pd.DataFrame = pd.read_parquet(data_path)
+
+            if "Target" not in data.columns or "Masked_EditSeq" not in data.columns:
+                log.info(
+                    f"Input dataset ({data_path}) does not contain preprocessed columns ('Target', 'Masked_EditSeq'). Running preprocessing..."
+                )
+                data = preprocess_func(data=data)
 
             # Stratified data split - first split the data into training and test sets
             gss = GroupShuffleSplit(
@@ -262,17 +273,14 @@ class PE6DataModule(LightningDataModule):
 
             # Save clean deduplicated test set for orthogonal benchmarks & Figure 3 evaluation
             test_save_path = "data/rq3_test_library_dedup.parquet"
-            if not pathlib.Path(test_save_path).exists():
+            if not pathlib.Path(test_save_path).exists() and "processed_data_dedup" in str(data_path):
                 X_test.to_parquet(test_save_path, index=False)
                 log.info(f"Saved strictly unseen test split to {test_save_path} ({len(X_test)} samples)")
 
             # Load mean/std for normalization if provided
             norm_mean = None
             norm_std = None
-            if (
-                "norm_mean_path" in self.hparams.dataset
-                and "norm_std_path" in self.hparams.dataset
-            ):
+            if self.hparams.dataset.get("norm_mean_path") and self.hparams.dataset.get("norm_std_path"):
                 try:
                     norm_mean = pd.read_csv(
                         self.hparams.dataset.norm_mean_path, index_col=0, header=None
@@ -281,7 +289,7 @@ class PE6DataModule(LightningDataModule):
                         self.hparams.dataset.norm_std_path, index_col=0, header=None
                     ).squeeze("columns")
                 except Exception as e:
-                    print(f"Warning: Failed to load normalization files: {e}")
+                    log.warning(f"Failed to load normalization files: {e}")
 
             self.data_train = PE6DeepPrimeDataset(
                 X_train,

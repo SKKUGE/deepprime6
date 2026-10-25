@@ -222,10 +222,9 @@ class PE6DeepPrimeModule(LightningModule):
             )
 
     def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True):
-        """Override to handle remapping from legacy checkpoints.
+        """Override to handle remapping between checkpoints trained with BatchNorms and BN-less models.
         
-        Legacy checkpoints (.ckpt) were often trained with BNs. 
-        When evaluating with Vanilla (no BNs), we need to remap the Linear layers.
+        When evaluating with Vanilla (no BNs), we remap the Linear layers accordingly.
         """
         our_keys = set(self.state_dict().keys())
         ckpt_keys = set(state_dict.keys())
@@ -235,7 +234,7 @@ class PE6DeepPrimeModule(LightningModule):
         has_bn_in_model = any(".d.1.weight" in k for k in our_keys)
         
         if has_bn_in_ckpt and not has_bn_in_model:
-            log.info("  [load_state_dict] Legacy checkpoint (with BNs) detected. Remapping to BN-less model...")
+            log.info("  [load_state_dict] Checkpoint with BatchNorms detected. Remapping layers for BN-less model...")
             remapped_sd = {}
             # Generic remapping for ensemble models
             # feature_extractor.models.X.d.4.weight -> feature_extractor.models.X.d.3.weight

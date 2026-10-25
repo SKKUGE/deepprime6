@@ -41,3 +41,58 @@ def use_original_architecture_for_baseline(cfg: DictConfig, log: logging.Logger 
             f"architecture ({ORIGINAL_DEEPPRIME_TARGET}) instead of {previous}"
         )
     return True
+
+
+def resolve_default_normalization_paths(
+    cfg: DictConfig, ckpt_path: str | None, log: logging.Logger | None = None
+) -> None:
+    """Populate ``cfg.data.dataset.norm_mean_path`` and ``norm_std_path`` if not explicitly set.
+
+    - For Lightning checkpoints (``.ckpt``), resolves to ``pe6_mean.csv`` / ``pe6_std.csv`` in the
+      checkpoint directory (falling back to ``src/models/weights/DeepPrime6-weights/``).
+    - For DeepPrime-Base (``ckpt_path is None`` with ``baseline`` weights), resolves to
+      ``mean.csv`` / ``std.csv`` in the baseline weights directory.
+    """
+    import os
+
+    data_cfg = cfg.get("data")
+    if data_cfg is None or "dataset" not in data_cfg:
+        return
+    ds_cfg = data_cfg.dataset
+    has_mean = bool(ds_cfg.get("norm_mean_path"))
+    has_std = bool(ds_cfg.get("norm_std_path"))
+    if has_mean and has_std:
+        return
+    if has_mean != has_std:
+        raise ValueError(
+            f"Partial normalization paths provided: norm_mean_path={ds_cfg.get('norm_mean_path')}, "
+            f"norm_std_path={ds_cfg.get('norm_std_path')}. Both must be provided together or both omitted."
+        )
+
+    candidate_mean = None
+    candidate_std = None
+
+    if ckpt_path:
+        ckpt_dir = os.path.dirname(ckpt_path)
+        for d in (ckpt_dir, "src/models/weights/DeepPrime6-weights"):
+            m = os.path.join(d, "pe6_mean.csv")
+            s = os.path.join(d, "pe6_std.csv")
+            if os.path.exists(m) and os.path.exists(s):
+                candidate_mean, candidate_std = m, s
+                break
+    else:
+        model_cfg = cfg.get("model")
+        baseline = model_cfg.get("model_weights", {}).get("baseline") if model_cfg else None
+        if baseline:
+            base_dir = os.path.dirname(str(baseline))
+            m = os.path.join(base_dir, "mean.csv")
+            s = os.path.join(base_dir, "std.csv")
+            if os.path.exists(m) and os.path.exists(s):
+                candidate_mean, candidate_std = m, s
+
+    if candidate_mean and candidate_std:
+        ds_cfg.norm_mean_path = candidate_mean
+        ds_cfg.norm_std_path = candidate_std
+        if log is not None:
+            log.info(f"Auto-resolved normalization stats: {candidate_mean}, {candidate_std}")
+

@@ -11,9 +11,19 @@ def parse_args():
     parser.add_argument("--output-dir", required=True, help="Directory to store outputs")
     return parser.parse_args()
 
-def parse_ref_alt(wt, ed):
+def parse_ref_alt(wt, ed, name=""):
     if wt == ed:
         return "", ""
+
+    # Handle fixed-length window (e.g., 123-nt) deletions where 3' genomic context shifted left
+    if "del" in str(name).lower() and "ins" not in str(name).lower() and len(wt) == len(ed):
+        prefix_len = 0
+        while prefix_len < len(wt) and wt[prefix_len] == ed[prefix_len]:
+            prefix_len += 1
+        for del_k in (1, 2, 3):
+            if prefix_len + del_k < len(wt) and wt[prefix_len + del_k:] == ed[prefix_len:-del_k]:
+                ed = ed[:-del_k]
+                break
 
     prefix_len = 0
     max_prefix = min(len(wt), len(ed))
@@ -31,13 +41,15 @@ def parse_ref_alt(wt, ed):
     return ref, alt
 
 def get_edit_type_and_length(ref, alt):
-    edit_length = len(alt) if len(alt) > len(ref) else len(ref)
     if len(ref) == len(alt):
         mut_type = 'Sub'
+        edit_length = len(alt)
     elif len(ref) > len(alt):
         mut_type = 'Del'
+        edit_length = len(ref) - len(alt)
     else:
         mut_type = 'Ins'
+        edit_length = len(alt) - len(ref)
     return mut_type, edit_length
 
 def main():
@@ -57,7 +69,7 @@ def main():
         wt = str(row['4']).upper()
         ed = str(row['5']).upper()
         
-        ref, alt = parse_ref_alt(wt, ed)
+        ref, alt = parse_ref_alt(wt, ed, name=name)
         mut_type, edit_length = get_edit_type_and_length(ref, alt)
         
         # Filter for 1-3bp edits

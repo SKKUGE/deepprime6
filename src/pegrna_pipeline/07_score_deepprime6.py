@@ -7,12 +7,15 @@ import numpy as np
 import sys
 
 # Ensure we can import from src
-sys.path.append("/home/work/workdir/deepprime6-genomebiol-revision")
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 from src.data.components.pe6_preprocess_data import preprocess_data
 
 # Ensure PRIDICT2 path for PE6DeepPrimeModule
 pridict2_dir = os.path.abspath("PRIDICT2")
-sys.path.append(pridict2_dir)
+if pridict2_dir not in sys.path:
+    sys.path.append(pridict2_dir)
 from src.models.pe6_module_dp_only import PE6DeepPrimeModule
 
 def parse_args():
@@ -47,6 +50,8 @@ def main():
         mv = yaml.safe_load(f)
         
     dp6_checkpoints = mv['models']['deepprime6'].get('checkpoints', {})
+    norm_mean = mv['models']['deepprime6'].get('norm_mean', 'src/models/weights/DeepPrime6-weights/pe6_mean.csv')
+    norm_std = mv['models']['deepprime6'].get('norm_std', 'src/models/weights/DeepPrime6-weights/pe6_std.csv')
     
     # Add dummy target labels since PE6DeepPrimeDataset checks for them
     pe_types = [
@@ -56,7 +61,7 @@ def main():
     for pe_type in pe_types:
         feat_df[pe_type] = 0.0
         
-    feat_df['ID'] = df['run_id'].values
+    feat_df['ID'] = df['design_id'].values if 'design_id' in df.columns else df['run_id'].values
         
     temp_input = os.path.join(args.output_dir, "temp_dp6_input.parquet")
     feat_df.to_parquet(temp_input, index=False)
@@ -80,10 +85,12 @@ def main():
         target_pe_type = pe_type_mapping.get(model_name, "PE6b(+PEmaxCas9)")
         
         cmd = [
-            "python", "src/predict.py",
+            sys.executable, "src/predict.py",
             "trainer=gpu",
             f"data.csv_path={temp_input}",
             f"ckpt_path={ckpt_path}",
+            f"data.dataset.norm_mean_path={norm_mean}",
+            f"data.dataset.norm_std_path={norm_std}",
             f"data.datafilter.PE_types=[\"{target_pe_type}\"]",
             f"model.prediction_save_path={temp_output}",
             "data.skip_preprocessing=True",

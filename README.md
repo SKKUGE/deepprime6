@@ -4,7 +4,6 @@
 
 Official repository for DeepPrime6: Deep learning-based prediction of prime editing efficiencies of PE6 editors.
 
-
 ## Environment
 
 ### Option A: conda
@@ -35,6 +34,7 @@ If you encounter an error like `ResolutionImpossible` or conflicts between `gene
    # 2. Install genet separately to avoid metadata conflicts
    PIP_CONSTRAINT="" pip install genet==0.15.1 --no-deps
    ```
+
 2. **Protobuf Conflict**: If your environment forces `protobuf 4.x` (common in some managed environments), you must clear the `PIP_CONSTRAINT` variable as shown above.
 
 ## Data
@@ -56,9 +56,9 @@ If you are providing your own dataset (e.g., `data/my_dataset.csv`), ensure your
 - **`leading G`**: Whether there is a leading G in the guide (`G` or `-`).
 - **Target columns**: Efficiency target metrics. The pipeline expects original research names which are mapped to readable names like `PE6a(+PEmaxCas9)` in `src/utils/dataprep.py`.
   - Example for PE6a: `Normalized+3rep_HEK-M-3-7D+pe_ratio_%`
-  - Example for read counts (used for filtering): `HEK-M-3-7D-UAR+total_read_counts`
+  - Example for read counts (used for filtering): `HEK-M-3-7D-B1+total_read_counts`
 
-*Note: The target columns are mapped to readable names like `PE6a(+PEmaxCas9)` in `src/utils/dataprep.py` using `RENAME_MAP` and `RENAME_MAP_FOR_VIS`. If your efficiency column is named differently, update these dictionaries or rename your column to match an existing key.*
+_Note: The target columns are mapped to readable names like `PE6a(+PEmaxCas9)` in `src/utils/dataprep.py` using `RENAME_MAP` and `RENAME_MAP_FOR_VIS`. If your efficiency column is named differently, update these dictionaries or rename your column to match an existing key._
 
 If your data is **already preprocessed** and contains all DeepPrime feature columns (e.g., `Target`, `Masked_EditSeq`, `PBS_len`, thermodynamic/GC features, etc.), you can set `data.skip_preprocessing=True` in your Hydra configuration to bypass the preprocessing step.
 
@@ -74,7 +74,10 @@ Train a model using a predefined experiment configuration.
 # General training (defaults to GPU if available)
 bash scripts/train.sh pe6a-DP-baseline
 
-# Training with sample data on CPU (for verification)
+# Training from scratch (without DeepPrime pretrained initialization)
+bash scripts/train.sh from-scratch/pe6a-DP-from-scratch
+
+# Training with raw sample data on CPU (for verification)
 bash scripts/train.sh pe6a-DP-baseline \
     data.data_dir=data/sample_data.csv \
     trainer=cpu \
@@ -94,7 +97,7 @@ bash scripts/eval.sh pe6a-DP-baseline \
 
 # Evaluate a specific Lightning checkpoint (.ckpt)
 bash scripts/eval.sh pe6a-DP-baseline \
-    --ckpt logs/PE6a-ft/runs/YYYY-MM-DD_HH-MM-SS/checkpoints/epoch_xxx.ckpt
+    --ckpt src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt
 ```
 
 ### 3. Inference (Predict)
@@ -109,33 +112,42 @@ bash scripts/predict.sh pe6a-DP-baseline \
 # Run inference on custom data
 bash scripts/predict.sh pe6a-DP-baseline \
     src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt \
-    data.data_dir=data/my_new_data.csv
+    data.csv_path=data/my_new_data.csv
 ```
 
 ## Model Weights
 
-The following table lists the model weights reported in the paper. You can use the provided `scripts/predict.sh` script to evaluate these checkpoints or `scripts/train.sh` to fine-tune them further.
+The following tables list the model weights reported in the paper. You can use the provided `scripts/predict.sh` or `scripts/eval.sh` scripts to evaluate these checkpoints, or `scripts/train.sh` to train/fine-tune them further.
 
+### Fine-Tuned Models (DeepPrime6)
 
-| PE type      |                                                  Checkpoint path |
-| -------------- | -----------------------------------------------------------------: |
-| PE6a         |         `src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt` |
-| PEmaxdRNaseH | `src/models/weights/DeepPrime6-weights/pemaxdrnaseh_mainft.ckpt` |
-| PE6b         |         `src/models/weights/DeepPrime6-weights/pe6b_mainft.ckpt` |
-| PE6c         |         `src/models/weights/DeepPrime6-weights/pe6c_mainft.ckpt` |
+| PE type      | Experiment Config          | Checkpoint Path                                                  |
+| ------------ | -------------------------- | ---------------------------------------------------------------- |
+| PE6a         | `pe6a-DP-baseline`         | `src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt`         |
+| PEmaxdRNaseH | `pemaxdrnaseh-DP-baseline` | `src/models/weights/DeepPrime6-weights/pemaxdrnaseh_mainft.ckpt` |
+| PE6b         | `pe6b-DP-baseline`         | `src/models/weights/DeepPrime6-weights/pe6b_mainft.ckpt`         |
+| PE6c         | `pe6c-DP-baseline`         | `src/models/weights/DeepPrime6-weights/pe6c_mainft.ckpt`         |
+
+### From-Scratch Models (DeepPrime6-Scratch)
+
+| PE type      | Experiment Config                           | Checkpoint Path                                                           |
+| ------------ | ------------------------------------------- | ------------------------------------------------------------------------- |
+| PE6a         | `from-scratch/pe6a-DP-from-scratch`         | `src/models/weights/DeepPrime6-scratch-weights/pe6a_scratch.ckpt`         |
+| PEmaxdRNaseH | `from-scratch/pemaxdrnaseh-DP-from-scratch` | `src/models/weights/DeepPrime6-scratch-weights/pemaxdrnaseh_scratch.ckpt` |
+| PE6b         | `from-scratch/pe6b-DP-from-scratch`         | `src/models/weights/DeepPrime6-scratch-weights/pe6b_scratch.ckpt`         |
+| PE6c         | `from-scratch/pe6c-DP-from-scratch`         | `src/models/weights/DeepPrime6-scratch-weights/pe6c_scratch.ckpt`         |
 
 Or you can find the exact same checkpoints on the [release](https://github.com/SKKUGE/deepprime6/releases/tag/v1.2) section.
-
 
 ## Customizing Configurations
 
 This project uses [Hydra](https://hydra.cc/) for configuration management.
-We provide a single example experiment config (`configs/experiment/pe6a-DP-baseline.yaml`) as a reference.
-You can use it as a template to create configs for other PE types or to customize training parameters.
+We provide pre-configured experiment files for all 4 PE variants under `configs/experiment/` (fine-tuning) and `configs/experiment/from-scratch/` (training from scratch).
+You can use `configs/experiment/pe6a-DP-baseline.yaml` as a template to create configs for other PE types or to customize training parameters.
 
 ### Creating a new experiment config for a different PE type
 
-Copy the example and modify the PE-type-specific fields (PE6b as a example):
+Copy the example and modify the PE-type-specific fields (PE6b as an example):
 
 ```bash
 cp configs/experiment/pe6a-DP-baseline.yaml configs/experiment/pe6b-DP-baseline.yaml
@@ -145,13 +157,13 @@ Then edit the new file — the key fields to change are:
 
 ```yaml
 # configs/experiment/pe6b-DP-baseline.yaml
-task_name: "PE6b-ft"                      # ← run output directory name
+task_name: "PE6b-ft" # ← run output directory name
 
-tags: ["6b-ft", "deep-prime-FT"]          # ← experiment tags (for tracking and identification)
+tags: ["6b-ft", "deep-prime-FT"] # ← experiment tags (for tracking and identification)
 
 data:
     datafilter:
-        PE_types: ["PE6b(+PEmaxCas9)"]    # ← target PE type to filter on your dataset
+    PE_types: ["PE6b(+PEmaxCas9)"] # ← target PE type to filter on your dataset
 ```
 
 ### Commonly overridden parameters
@@ -193,12 +205,21 @@ nohup python src/train.py -m \
 configs/
   train.yaml              Root training config (defaults & global settings)
   eval.yaml               Root evaluation config
+  predict.yaml            Root inference config
   data/
     pe6.yaml              DataModule config (splits, batch size, preprocessing)
   model/
     pe6_deep_prime_only.yaml           Model architecture + optimizer + loss
   experiment/
-    pe6a-DP-baseline.yaml Example experiment (use as template for other PE types)
+    pe6a-DP-baseline.yaml              PE6a fine-tuning config
+    pe6b-DP-baseline.yaml              PE6b fine-tuning config
+    pe6c-DP-baseline.yaml              PE6c fine-tuning config
+    pemaxdrnaseh-DP-baseline.yaml      PEmaxdRNaseH fine-tuning config
+    from-scratch/
+      pe6a-DP-from-scratch.yaml        PE6a from-scratch training config
+      pe6b-DP-from-scratch.yaml        PE6b from-scratch training config
+      pe6c-DP-from-scratch.yaml        PE6c from-scratch training config
+      pemaxdrnaseh-DP-from-scratch.yaml PEmaxdRNaseH from-scratch training config
   callbacks/
     default.yaml          Checkpoint, early stopping, progress bar
   trainer/
@@ -217,9 +238,8 @@ configs/
 
 Copy `.env.example` to `.env` and fill in your credentials:
 
-
 | Variable        | Purpose                             |
-| ----------------- | ------------------------------------- |
+| --------------- | ----------------------------------- |
 | `WANDB_API_KEY` | Weights & Biases logging (optional) |
 
 ## Notes

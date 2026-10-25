@@ -292,7 +292,7 @@ def draw_general_activity_ecdfplot(ecdf_df, id, output_path, log_scale=False):
     import seaborn as sns
 
     from .drawing_variables import pe6_colormap_dict
-    from .utils import rename_map_for_visualization
+    from .drawing_utils import rename_map_for_visualization
 
     plt.rcParams.update(
         {
@@ -428,7 +428,7 @@ def box_distribution_for_activity(
     None
     """
 
-    from .utils import rename_map_for_visualization
+    from .drawing_utils import rename_map_for_visualization
 
     sns.set_theme(style="ticks", font_scale=2.0)
     fig, ax = plt.subplots(figsize=(6, 12))
@@ -496,25 +496,25 @@ def generate_rep_trend_barplot(df, output_path, name):
     import pandas as pd
     import seaborn as sns
 
-    from .utils import create_directory_and_save_plot, rename_map_for_visualization
+    from .drawing_utils import create_directory_and_save_plot, rename_map_for_visualization
 
     indiv_data = df.filter(like="indiv_vis")
-    kmc_data = indiv_data.filter(like="KMC")
-    uar_data = indiv_data.filter(like="UAR")
+    b2_data = indiv_data.filter(like="B2")
+    b1_data = indiv_data.filter(like="B1")
 
-    kmc_mean_data = (
-        kmc_data.rename(columns=rename_map_for_visualization())
-        .rename(columns=lambda x: x.replace("-KMC", ""))
+    b2_mean_data = (
+        b2_data.rename(columns=rename_map_for_visualization())
+        .rename(columns=lambda x: x.replace("-B2", ""))
         .mean()
     )
-    uar_mean_data = (
-        uar_data.rename(columns=rename_map_for_visualization())
-        .rename(columns=lambda x: x.replace("-UAR", ""))
+    b1_mean_data = (
+        b1_data.rename(columns=rename_map_for_visualization())
+        .rename(columns=lambda x: x.replace("-B1", ""))
         .mean()
     )
 
     rep_trend_data = pd.DataFrame(
-        [kmc_mean_data, uar_mean_data], index=["KMC", "UAR"]
+        [b2_mean_data, b1_mean_data], index=["B2", "B1"]
     ).reset_index()
     rep_trend_data = rep_trend_data.melt(
         id_vars="index", var_name="variants", value_name="Mean PE efficiency (%)"
@@ -608,7 +608,7 @@ def draw_factor_analysis_barplot(df, factor, output_path, name):
     Returns:
     None
     """
-    from .utils import rename_map_for_visualization, rename_peg_3term_motifs
+    from .drawing_utils import rename_map_for_visualization, rename_peg_3term_motifs
 
     if factor == "motif":
         df[factor] = df[factor].apply(lambda x: rename_peg_3term_motifs(x))
@@ -641,7 +641,7 @@ def _draw_general_lineplot(df, x, y, hue, output_path, name):
     None
     """
     from .drawing_variables import pe6_colormap_dict
-    from .utils import rename_map_for_visualization
+    from .drawing_utils import rename_map_for_visualization
 
     plt.rcParams.update(
         {
@@ -685,7 +685,7 @@ def draw_factor_analysis_lineplot(df, factor, output_path, name):
     None
     """
 
-    from .utils import rename_map_for_visualization
+    from .drawing_utils import rename_map_for_visualization
 
     df_factor = pd.concat([df[factor], df.filter(like="comb")], axis=1)
     df_factor = df_factor.rename(columns=rename_map_for_visualization())
@@ -717,7 +717,7 @@ def analyze_pbs_rtt_length(df, output_path, quantity_cutoff=10):
     import numpy as np
     import seaborn as sns
 
-    from .utils import rename_map_for_visualization
+    from .drawing_utils import rename_map_for_visualization
 
     sample_rename_map = rename_map_for_visualization()
 
@@ -873,7 +873,7 @@ def _pbs_rtt_peg_count_heatmap(
 
 def draw_1st_ranked_proportion_with_piechart(df, masking_condition, title, root_dir, name):
     from .drawing_variables import pe6_colormap
-    from .utils import (
+    from .drawing_utils import (
         efficiency_filtering_and_ranking_dataframe,
         get_count_of_first_ranks,
         rename_map_for_visualization,

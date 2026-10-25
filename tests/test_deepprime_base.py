@@ -12,7 +12,11 @@ from src.models.components.dprime import (
     GeneInteractionModelVanilla,
 )
 from src.models.pe6_module_dp_only import PE6DeepPrimeModule
-from src.utils.deepprime_base import ORIGINAL_DEEPPRIME_TARGET, use_original_architecture_for_baseline
+from src.utils.deepprime_base import (
+    ORIGINAL_DEEPPRIME_TARGET,
+    resolve_default_normalization_paths,
+    use_original_architecture_for_baseline,
+)
 
 WEIGHT_GLOB = "src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/final_model_*.pt"
 WEIGHT_FILES = sorted(glob.glob(WEIGHT_GLOB))
@@ -58,6 +62,28 @@ class TestOriginalArchitectureSwitch:
         )
         assert use_original_architecture_for_baseline(cfg) is False
         assert cfg.model.feature_extractor._target_ == target
+
+    def test_resolve_default_normalization_paths_for_ckpt(self):
+        cfg = OmegaConf.create(
+            {
+                "data": {"dataset": {"norm_mean_path": None, "norm_std_path": None}},
+                "model": {"model_weights": {"baseline": WEIGHT_GLOB}},
+            }
+        )
+        resolve_default_normalization_paths(cfg, "src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt")
+        assert cfg.data.dataset.norm_mean_path.endswith("pe6_mean.csv")
+        assert cfg.data.dataset.norm_std_path.endswith("pe6_std.csv")
+
+    def test_resolve_default_normalization_paths_for_baseline(self):
+        cfg = OmegaConf.create(
+            {
+                "data": {"dataset": {"norm_mean_path": None, "norm_std_path": None}},
+                "model": {"model_weights": {"baseline": WEIGHT_GLOB}},
+            }
+        )
+        resolve_default_normalization_paths(cfg, None)
+        assert cfg.data.dataset.norm_mean_path.endswith("mean.csv")
+        assert cfg.data.dataset.norm_std_path.endswith("std.csv")
 
 
 @needs_weights

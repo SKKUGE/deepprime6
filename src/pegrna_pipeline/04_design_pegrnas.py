@@ -61,9 +61,9 @@ def extract_target_features(wt_ctx, ed_ctx, ref, alt, strand, pbs_len, rtt_len):
         
         # Calculate distance to edit
         # For forward strand, nick_pos is the index in wt_ctx.
-        # The edit starts at `context_window`.
+        # The edit starts at `context_window` and has length `len(alt)` in `ed_ctx`.
         edit_start = context_window
-        edit_end = context_window + len(ref)
+        edit_end = context_window + len(alt)
         
         # RTT must span from nick_pos to past the edit_end
         if nick_pos >= edit_end:
