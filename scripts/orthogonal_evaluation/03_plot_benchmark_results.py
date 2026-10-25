@@ -178,7 +178,7 @@ def run_supp_fig7_cross_inference(
         g_tensor = char_to_onehot_tensor(df_data[wt_col], df_data[ed_col], device)
 
         pred_record = pd.DataFrame({
-            'Dataset': dname,
+            'Dataset': [dname] * len(y_true),
             'Measured_PE_efficiency': y_true
         })
         row_corr = {'Test dataset': dname}
