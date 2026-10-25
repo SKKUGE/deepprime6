@@ -90,6 +90,6 @@ def test_e2e_inference_cli(tmp_path):
     assert os.path.exists(out_csv), f"Output prediction file {out_csv} not generated."
 
     pred_df = pd.read_csv(out_csv)
-    assert len(pred_df) == 10, f"Expected 10 prediction rows, got {len(pred_df)}"
+    assert len(pred_df) == len(pd.read_csv(SAMPLE_DATA)), f"Expected {len(pd.read_csv(SAMPLE_DATA))} prediction rows, got {len(pred_df)}"
     assert "pred_dp6_pe6a" in pred_df.columns, f"'pred_dp6_pe6a' column missing from {pred_df.columns}"
     assert not pred_df["pred_dp6_pe6a"].isna().any(), "Predictions contain NaNs."
