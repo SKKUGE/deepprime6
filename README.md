@@ -1,6 +1,6 @@
 # DeepPrime6
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23277667.svg)](https://doi.org/10.5281/zenodo.23277667)
+[![DOI](https://zenodo.org/badge/1223731907.svg)](https://doi.org/10.5281/zenodo.22719978)
 
 Official repository for DeepPrime6: Deep learning-based prediction of prime editing efficiencies of PE6 editors.
 
@@ -249,5 +249,5 @@ Copy `.env.example` to `.env` and fill in your credentials:
 
 ## Citation
 
-Ju-young Shin. (2026). SKKUGE/deepprime6: v1.3-submission (Version v1.3) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23277667
+Ju-young Shin. (2026). SKKUGE/deepprime6: v1.4 (Version v1.4) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23277690
 
