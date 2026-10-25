@@ -59,8 +59,15 @@ def resolve_default_normalization_paths(
     if data_cfg is None or "dataset" not in data_cfg:
         return
     ds_cfg = data_cfg.dataset
-    if ds_cfg.get("norm_mean_path") and ds_cfg.get("norm_std_path"):
+    has_mean = bool(ds_cfg.get("norm_mean_path"))
+    has_std = bool(ds_cfg.get("norm_std_path"))
+    if has_mean and has_std:
         return
+    if has_mean != has_std:
+        raise ValueError(
+            f"Partial normalization paths provided: norm_mean_path={ds_cfg.get('norm_mean_path')}, "
+            f"norm_std_path={ds_cfg.get('norm_std_path')}. Both must be provided together or both omitted."
+        )
 
     candidate_mean = None
     candidate_std = None

@@ -64,9 +64,18 @@ def main():
     wt_clean = df['WT_context'].astype(str).str.replace('N', '', regex=False)
     ed_clean = df['Edited_context'].astype(str).str.replace('N', '', regex=False)
     cleaned_eds = []
-    for w_s, e_s, et in zip(wt_clean, ed_clean, pr_input_df['Edit_type']):
+    for idx, (w_s, e_s, et) in enumerate(zip(wt_clean, ed_clean, pr_input_df['Edit_type'])):
         if et == 'Del' and len(e_s) == len(w_s):
-            cleaned_eds.append(e_s[:-1])
+            row = df.iloc[idx]
+            ref, alt = str(row.get('REF', '')), str(row.get('ALT', ''))
+            del_len = len(ref) - len(alt) if len(ref) > len(alt) else 1
+            if 'edit_len' in row and pd.notna(row['edit_len']) and int(row['edit_len']) > 0:
+                del_len = int(row['edit_len'])
+            elif 'Edit_len' in row and pd.notna(row['Edit_len']) and int(row['Edit_len']) > 0:
+                del_len = int(row['Edit_len'])
+            elif 'Edit length' in row and pd.notna(row['Edit length']) and int(row['Edit length']) > 0:
+                del_len = int(row['Edit length'])
+            cleaned_eds.append(e_s[:-del_len] if len(e_s) > del_len else e_s)
         else:
             cleaned_eds.append(e_s)
     pr_input_df['WildTypeSequence'] = wt_clean.values
