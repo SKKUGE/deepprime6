@@ -7,7 +7,7 @@ Generate comprehensive analysis plots for FRT small library predictions:
 4. Prediction status breakdown pie chart
 
 Reproducible directly from:
-- `data/frt-library-prediction/frt_small_lib_predictions.csv`
+- `data/small_library/frt/frt_small_lib_predictions.csv`
 """
 
 import os
@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument(
         "--results_file",
         type=str,
-        default="data/frt-library-prediction/frt_small_lib_predictions.csv",
+        default="data/small_library/frt/frt_small_lib_predictions.csv",
         help="Path to frt_small_lib_predictions.csv"
     )
     parser.add_argument(
@@ -41,7 +41,7 @@ def main():
     plots_dir = args.plots_dir
 
     if not os.path.exists(results_file):
-        fallback = "data/frt-library-prediction/frt_small_lib_predictions.csv"
+        fallback = "data/small_library/frt/frt_small_lib_predictions.csv"
         if os.path.exists(fallback):
             results_file = fallback
         else:
@@ -67,7 +67,7 @@ def main():
         "pred_dp6_pe6a",
         "pred_dp6_pe6b",
         "pred_dp6_pe6c",
-        "pred_pridict2"
+        "pred_pridict2",
     ]
     model_labels = [
         "DeepPrime-FT",
@@ -75,8 +75,13 @@ def main():
         "PE6a",
         "PE6b",
         "PE6c",
-        "PRIDICT2.0"
+        "PRIDICT2.0 (HEK)",
     ]
+    palette = ["#4A90E2", "#50E3C2", "#F5A623", "#E94E77", "#9013FE", "#7ED321"]
+    if "pred_pridict2_k562" in df.columns:
+        model_cols.append("pred_pridict2_k562")
+        model_labels.append("PRIDICT2.0 (K562)")
+        palette.append("#2E7D32")
     model_name_map = dict(zip(model_cols, model_labels))
 
     # -------------------------------------------------------------
@@ -88,23 +93,25 @@ def main():
     corr_pearson = common_df[model_cols].corr(method="pearson").rename(index=model_name_map, columns=model_name_map)
     corr_spearman = common_df[model_cols].corr(method="spearman").rename(index=model_name_map, columns=model_name_map)
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6.5))
 
     sns.heatmap(corr_pearson, annot=False, cmap="Blues", vmin=0, vmax=1, ax=axes[0], cbar_kws={"label": "Pearson r"})
     for i in range(corr_pearson.shape[0]):
         for j in range(corr_pearson.shape[1]):
             val = corr_pearson.iloc[i, j]
             axes[0].text(j + 0.5, i + 0.5, f"{val:.3f}", ha="center", va="center",
-                         color="white" if val > 0.65 else "#111111", fontsize=10, fontweight="bold")
+                         color="white" if val > 0.65 else "#111111", fontsize=9.5, fontweight="bold")
     axes[0].set_title(f"Inter-Model Pearson Correlation (N={n_common})", fontsize=13, fontweight="bold", pad=12)
+    axes[0].tick_params(axis="x", rotation=30)
 
     sns.heatmap(corr_spearman, annot=False, cmap="YlGnBu", vmin=0, vmax=1, ax=axes[1], cbar_kws={"label": "Spearman rho"})
     for i in range(corr_spearman.shape[0]):
         for j in range(corr_spearman.shape[1]):
             val = corr_spearman.iloc[i, j]
             axes[1].text(j + 0.5, i + 0.5, f"{val:.3f}", ha="center", va="center",
-                         color="white" if val > 0.65 else "#111111", fontsize=10, fontweight="bold")
+                         color="white" if val > 0.65 else "#111111", fontsize=9.5, fontweight="bold")
     axes[1].set_title(f"Inter-Model Spearman Correlation (N={n_common})", fontsize=13, fontweight="bold", pad=12)
+    axes[1].tick_params(axis="x", rotation=30)
 
     plt.tight_layout()
     heatmap_path = os.path.join(plots_dir, "inter_model_correlation_heatmaps.png")
@@ -123,9 +130,7 @@ def main():
     ).dropna()
     melted["Model Name"] = melted["Model"].map(model_name_map)
 
-    palette = ["#4A90E2", "#50E3C2", "#F5A623", "#E94E77", "#9013FE", "#7ED321"]
-
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(12, 6))
     sns.boxplot(
         data=melted,
         x="Model Name",
@@ -144,9 +149,10 @@ def main():
         jitter=0.2,
         size=5
     )
-    plt.title("Predicted Editing Efficiency Distribution Across 6 Models (FRT Small Library)", fontsize=13, fontweight="bold", pad=14)
+    plt.title(f"Predicted Editing Efficiency Distribution Across {len(model_cols)} Model Scores (FRT Small Library)", fontsize=13, fontweight="bold", pad=14)
     plt.xlabel("Model", fontsize=11, fontweight="bold")
     plt.ylabel("Predicted Efficiency (%)", fontsize=11, fontweight="bold")
+    plt.xticks(rotation=15, ha="right")
     plt.tight_layout()
     box_path = os.path.join(plots_dir, "model_efficiency_distributions.png")
     plt.savefig(box_path, dpi=300)
