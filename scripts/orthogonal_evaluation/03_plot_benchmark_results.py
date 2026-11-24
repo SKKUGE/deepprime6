@@ -85,7 +85,7 @@ def find_pred_file(dir_path, candidates):
 def run_supp_fig7_cross_inference(
     results_dir: str,
     cache_dir: str = "data/orthogonal_testset/supp_fig7_testsets",
-    excel_path: str = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S2.xlsx",
+    excel_path: str = "data/library_design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S2.xlsx",
     force_recompute: bool = False
 ) -> pd.DataFrame:
     """
@@ -131,7 +131,7 @@ def run_supp_fig7_cross_inference(
             datasets[label] = pd.read_parquet(fpath)
         else:
             if "PE2 " in label:
-                csv_src = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/dst/Generalization_Test/Table_S2_1_Test_Set.csv"
+                csv_src = "data/library_design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/dst/Generalization_Test/Table_S2_1_Test_Set.csv"
                 df_src = pd.read_csv(csv_src)
             else:
                 sheet_idx = {

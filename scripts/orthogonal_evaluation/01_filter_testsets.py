@@ -62,7 +62,7 @@ def main():
     print("==========================================================================", flush=True)
 
     # 1. Collect all our PE6 targets (pe6_full + small_library)
-    pe6_full_path = "data/Library design/pairwise_library_design/FULL_LIBRARY/results/pe6_full_library.csv"
+    pe6_full_path = "data/library_design/pairwise_library_design/FULL_LIBRARY/results/pe6_full_library.csv"
     print(f"Loading our full library from {pe6_full_path}...", flush=True)
     pe6_full = pd.read_csv(pe6_full_path)
     
@@ -94,7 +94,7 @@ def main():
     print(f"  PE6 full rows: {len(pe6_full):,} | unique 74nt targets (incl. RC): {len(pe6_targets_74):,} | non-74nt targets: {len(pe6_non74_targets):,}", flush=True)
 
     # 2. DeepPrime-Base Pretraining Set (Table S2-1 Train)
-    dp_train_path = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S2-1.csv"
+    dp_train_path = "data/library_design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S2-1.csv"
     print(f"Loading DeepPrime-base pretraining data from {dp_train_path}...", flush=True)
     dp_all = pd.read_csv(dp_train_path, low_memory=False)
     col_wts_dp_all = [c for c in dp_all.columns if c.startswith("Wide target sequence")][0]
@@ -124,7 +124,7 @@ def main():
     # 4. Filter DeepPrime Official Test Set
     # ---------------------------------------------------------
     print("\n--- Processing DeepPrime Official Generalization Test Set ---", flush=True)
-    dp_test_path = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/dst/Generalization_Test/Table_S2_1_Test_Set.csv"
+    dp_test_path = "data/library_design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/dst/Generalization_Test/Table_S2_1_Test_Set.csv"
     dp_test = pd.read_csv(dp_test_path)
     col_wts_dp = [c for c in dp_test.columns if c.startswith("Wide target sequence")][0]
     col_ets_dp = [c for c in dp_test.columns if c.startswith("Edited target sequence")][0]
@@ -173,7 +173,7 @@ def main():
 
     # Merge Table S1 metadata to get Guide, PBS, RTT, and edit context
     print("  Merging Table S1-ClinVar metadata for pegRNA sequence reconstruction...", flush=True)
-    s1_path = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S1-ClinVar.csv"
+    s1_path = "data/library_design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S1-ClinVar.csv"
     s1 = pd.read_csv(s1_path)
     s1["Edit type"] = s1["Edit type"].str.capitalize()
     col_wts_s1 = [c for c in s1.columns if c.startswith("Wide target sequence")][0]
