@@ -465,8 +465,15 @@ def export_model_family_tables(dataset_frames: List[Tuple[str, pd.DataFrame, str
         print(f"  Exported model-family prediction table: {fpath} ({len(master_df):,} rows)", flush=True)
 
 
-def plot_grouped_heatmap(corr_df: pd.DataFrame, out_png: str, out_svg: str) -> None:
-    """Plots the 3-block grouped Pearson correlation heatmap matching the target layout."""
+def plot_grouped_heatmap(
+    corr_df: pd.DataFrame,
+    out_png: str,
+    out_svg: str,
+    cbar_label: str = "Pearson's correlation (r)",
+    vmin_val: float = 0.35,
+    vmax_val: float = 0.80,
+) -> None:
+    """Plots the 3-block grouped correlation heatmap matching the target layout."""
     plt.rcParams.update(
         {
             "font.family": "DejaVu Sans",
@@ -497,9 +504,6 @@ def plot_grouped_heatmap(corr_df: pd.DataFrame, out_png: str, out_svg: str) -> N
         wspace=0.05,
     )
 
-    vmax_val = max(0.90, float(np.ceil(corr_df[MODEL_DISPLAY_COLS].max().max() * 10) / 10))
-    vmin_val = 0.0
-
     axes = [fig.add_subplot(gs[i, 0]) for i in range(3)]
     cax = fig.add_subplot(gs[:, 1])
 
@@ -516,7 +520,7 @@ def plot_grouped_heatmap(corr_df: pd.DataFrame, out_png: str, out_svg: str) -> N
             vmax=vmax_val,
             cbar=(g_idx == 0),
             cbar_ax=(cax if g_idx == 0 else None),
-            cbar_kws={"label": "Pearson's correlation (r)"} if g_idx == 0 else None,
+            cbar_kws={"label": cbar_label} if g_idx == 0 else None,
             linewidths=0.6,
             linecolor="#E2E8F0",
             ax=ax,
@@ -545,7 +549,7 @@ def plot_grouped_heatmap(corr_df: pd.DataFrame, out_png: str, out_svg: str) -> N
             ax.set_xticklabels(MODEL_DISPLAY_COLS, rotation=32, ha="right", fontsize=11)
 
     cax.tick_params(labelsize=10.5)
-    cax.set_ylabel("Pearson's correlation (r)", fontsize=12, labelpad=10)
+    cax.set_ylabel(cbar_label, fontsize=12, labelpad=10)
     for spine in cax.spines.values():
         spine.set_visible(True)
         spine.set_color("black")
@@ -771,22 +775,25 @@ def main() -> None:
     export_model_family_tables(dataset_specs)
 
     # ---------------------------------------------------------
-    # 7. Compute Pearson Correlation Aggregation & Heatmap
+    # 7. Compute Pearson & Spearman Correlation Aggregation & Heatmaps
     # ---------------------------------------------------------
-    print("\n--- 7. Aggregating Pearson Correlations ---", flush=True)
-    heatmap_rows = []
+    print("\n--- 7. Aggregating Pearson & Spearman Correlations ---", flush=True)
+    pearson_rows = []
+    spearman_rows = []
     detailed_rows = []
 
     for ds_label, df_ds, gt_col in dataset_specs:
         y_true = df_ds[gt_col].to_numpy(dtype=np.float64)
         valid_gt_n = int(np.sum(~np.isnan(y_true)))
         row_label = f"{ds_label} (n = {valid_gt_n:,})"
-        hm_row = {"Test dataset": row_label, "Test_dataset_raw": ds_label, "N": valid_gt_n}
+        p_row = {"Test dataset": row_label, "Test_dataset_raw": ds_label, "N": valid_gt_n}
+        s_row = {"Test dataset": row_label, "Test_dataset_raw": ds_label, "N": valid_gt_n}
 
         for p_col, disp_name in zip(PRED_COLS, MODEL_DISPLAY_COLS):
             y_pred = df_ds[p_col].to_numpy(dtype=np.float64)
             r_val, rho_val, n_val = compute_pearson_spearman(y_true, y_pred)
-            hm_row[disp_name] = r_val
+            p_row[disp_name] = r_val
+            s_row[disp_name] = rho_val
             detailed_rows.append(
                 {
                     "Test_dataset": ds_label,
@@ -797,35 +804,65 @@ def main() -> None:
                     "N": n_val,
                 }
             )
-        heatmap_rows.append(hm_row)
+        pearson_rows.append(p_row)
+        spearman_rows.append(s_row)
 
-    hm_df = pd.DataFrame(heatmap_rows)
+    hm_df = pd.DataFrame(pearson_rows)
     hm_csv_path = os.path.join(OUT_DIR, "cross_benchmark_pearson_correlation_matrix.csv")
     hm_df.to_csv(hm_csv_path, index=False)
+
+    sp_df = pd.DataFrame(spearman_rows)
+    sp_csv_path = os.path.join(OUT_DIR, "cross_benchmark_spearman_correlation_matrix.csv")
+    sp_df.to_csv(sp_csv_path, index=False)
 
     det_df = pd.DataFrame(detailed_rows)
     det_csv_path = os.path.join(OUT_DIR, "cross_benchmark_metrics_detailed.csv")
     det_df.to_csv(det_csv_path, index=False)
 
-    print("\n=== AGGREGATED PEARSON CORRELATION MATRIX (r) ===")
-    disp_table = hm_df[["Test_dataset_raw", "N"] + MODEL_DISPLAY_COLS].copy()
-    for c in MODEL_DISPLAY_COLS:
-        disp_table[c] = disp_table[c].map(lambda x: f"{x:.4f}")
-    print(disp_table.to_string(index=False))
+    for title, df_mat in [("PEARSON (r)", hm_df), ("SPEARMAN (rho)", sp_df)]:
+        print(f"\n=== AGGREGATED {title} MATRIX ===")
+        disp_table = df_mat[["Test_dataset_raw", "N"] + MODEL_DISPLAY_COLS].copy()
+        for c in MODEL_DISPLAY_COLS:
+            disp_table[c] = disp_table[c].map(lambda x: f"{x:.4f}")
+        print(disp_table.to_string(index=False))
 
-    plot_df = hm_df.set_index("Test dataset")[MODEL_DISPLAY_COLS]
     out_png = os.path.join(OUT_DIR, "cross_benchmark_4models_pearson_heatmap.png")
     out_svg = os.path.join(OUT_DIR, "cross_benchmark_4models_pearson_heatmap.svg")
-    plot_grouped_heatmap(plot_df, out_png, out_svg)
+    plot_grouped_heatmap(
+        hm_df.set_index("Test dataset")[MODEL_DISPLAY_COLS],
+        out_png,
+        out_svg,
+        cbar_label="Pearson's correlation (r)",
+        vmin_val=0.35,
+        vmax_val=0.80,
+    )
 
+    out_sp_png = os.path.join(OUT_DIR, "cross_benchmark_4models_spearman_heatmap.png")
+    out_sp_svg = os.path.join(OUT_DIR, "cross_benchmark_4models_spearman_heatmap.svg")
+    plot_grouped_heatmap(
+        sp_df.set_index("Test dataset")[MODEL_DISPLAY_COLS],
+        out_sp_png,
+        out_sp_svg,
+        cbar_label="Spearman's correlation ($\\rho$)",
+        vmin_val=0.40,
+        vmax_val=0.85,
+    )
+
+    artifacts_to_mirror = [
+        out_png,
+        out_svg,
+        out_sp_png,
+        out_sp_svg,
+        hm_csv_path,
+        sp_csv_path,
+        det_csv_path,
+    ]
     for mirror_dir in PLOT_MIRROR_DIRS:
         os.makedirs(mirror_dir, exist_ok=True)
-        shutil.copy2(out_png, os.path.join(mirror_dir, os.path.basename(out_png)))
-        shutil.copy2(out_svg, os.path.join(mirror_dir, os.path.basename(out_svg)))
-        shutil.copy2(hm_csv_path, os.path.join(mirror_dir, os.path.basename(hm_csv_path)))
-        shutil.copy2(det_csv_path, os.path.join(mirror_dir, os.path.basename(det_csv_path)))
+        for src_path in artifacts_to_mirror:
+            shutil.copy2(src_path, os.path.join(mirror_dir, os.path.basename(src_path)))
 
-    print("\n[Complete] All prediction tables, aggregated Pearson correlations, and heatmaps generated!", flush=True)
+    print("\n[Complete] All prediction tables, aggregated Pearson & Spearman correlations, and heatmaps generated!", flush=True)
 
 
 if __name__ == "__main__":
