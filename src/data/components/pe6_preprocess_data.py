@@ -36,6 +36,10 @@ def aggregate_pegrna_copies(df: pd.DataFrame) -> pd.DataFrame:
     eff_cols = [c for c in df.columns if "comb_vis+" in c or "Normalized+" in c or "pe_ratio_%" in c]
     rc_cols = [c for c in df.columns if "read_counts" in c]
 
+    df = df.copy()
+    for col in eff_cols:
+        df[col] = df[col].clip(lower=0.0)
+
     agg_dict = {}
     for col in df.columns:
         if col in avail_key:
@@ -149,6 +153,15 @@ def preprocess_data(
         print("Filling DeepSpCas9_score with dummy value (0.0).")
         data["DeepSpCas9_score"] = 0.0
 
+    # Standardize legacy batch suffixes (-KMC -> -B2, -UAR -> -B1)
+    batch_rename = {
+        c: c.replace("-KMC", "-B2").replace("-UAR", "-B1")
+        for c in data.columns
+        if "-KMC" in c or "-UAR" in c
+    }
+    if batch_rename:
+        data = data.rename(columns=batch_rename)
+
     # Preprocess: melting data
     data = data.rename(columns=RENAME_MAP)
     data = data.reset_index(drop=False)
@@ -156,11 +169,32 @@ def preprocess_data(
     # Remove duplicate columns if any
     data = data.loc[:, ~data.columns.duplicated()]
 
-    # Fill in missing and erroneous prime editing efficiencies
-    data = data.fillna(0)
-
     # Rename columns for interpretability
     data = data.rename(columns=RENAME_MAP_FOR_VIS)
+
+    # Clip negative editing efficiencies at 0.0 per replicate BEFORE averaging,
+    # preserving NaN values (do not fillna(0) on efficiency columns).
+    from src.utils.dataprep import EFF_PAIR
+
+    eff_cols = [
+        c
+        for c in data.columns
+        if "comb_vis+" in c
+        or "Normalized+" in c
+        or "pe_ratio_%" in c
+        or c in EFF_PAIR
+        or (c.startswith(("PE6-", "PE7-")) and "rep" in c)
+    ]
+    for col in eff_cols:
+        if col in data.columns and pd.api.types.is_numeric_dtype(data[col]):
+            data[col] = data[col].clip(lower=0.0)
+
+    for col_name, rep_cols in EFF_PAIR.items():
+        valid_cols = [c for c in rep_cols if c in data.columns]
+        if valid_cols:
+            for r_col in valid_cols:
+                data[r_col] = data[r_col].clip(lower=0.0)
+            data[col_name] = data[valid_cols].mean(axis=1, skipna=False)
 
     # Save only if output_file is specified
     if output_file is not None:

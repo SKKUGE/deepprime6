@@ -34,13 +34,28 @@ from scipy.stats import spearmanr, pearsonr
 def resolve_paths():
     """Dynamically resolve input data and output directories based on execution location."""
     if os.path.exists("predictions/rq3_test_library.parquet") or os.path.exists("predictions/rq3_test_library_dedup.parquet"):
-        data_dirs = ["predictions", "data", "../../data"]
+        data_dirs = [
+            "predictions",
+            "data/main_library/test_split",
+            "data/main_library/predictions",
+            "data/main_library",
+            "data",
+            "../../data/main_library/test_split",
+            "../../data/main_library/predictions",
+            "../../data",
+        ]
         panels_dir = "panels"
         figures_dir = "figures"
         results_dir = "results"
         mirror_dirs = ["../../notebooks/plots"] if os.path.isdir("../../notebooks/plots") else []
     else:
-        data_dirs = ["data", "predictions"]
+        data_dirs = [
+            "data/main_library/test_split",
+            "data/main_library/predictions",
+            "data/main_library",
+            "data",
+            "predictions",
+        ]
         panels_dir = "notebooks/plots"
         figures_dir = "notebooks/plots"
         results_dir = "notebooks/plots"
@@ -210,7 +225,7 @@ def load_and_merge_data():
         ]
         valid_reps = [c for c in rep_cols if c in df.columns]
         if len(valid_reps) > 0:
-            df[col_clean] = np.maximum(0.0, df[valid_reps].mean(axis=1))
+            df[col_clean] = df[valid_reps].clip(lower=0.0).mean(axis=1, skipna=False)
             pe_type = IDX_TO_PE_TYPE[i]
             qc_mask = get_pe6_qc_mask(df, pe_type=pe_type, read_count_filter=200, max_ctrl_bg=5.0)
             df.loc[~qc_mask, col_clean] = np.nan
@@ -262,11 +277,11 @@ def calculate_correlations(df, cohort_name):
             'Domain': domain,
             'N': n_samples,
             'Spearman_PRIDICT2': sp_pri,
-            'Spearman_DeepPrime_FT': sp_base,
+            'Spearman_DeepPrime_PE2': sp_base,
             'Spearman_From_Scratch': sp_sc,
             'Spearman_DeepPrime6': sp_dp6,
             'Pearson_PRIDICT2': pe_pri,
-            'Pearson_DeepPrime_FT': pe_base,
+            'Pearson_DeepPrime_PE2': pe_base,
             'Pearson_From_Scratch': pe_sc,
             'Pearson_DeepPrime6': pe_dp6
         })
@@ -295,8 +310,8 @@ def generate_visualizations(df, res_df, cohort_name):
     
     # Plot 1: Heatmap comparison of Spearman correlations
     plt.figure(figsize=(11, 5))
-    heatmap_cols = ['Spearman_PRIDICT2', 'Spearman_DeepPrime_FT']
-    col_names = ['PRIDICT2.0 (HEK)', 'DeepPrime-FT']
+    heatmap_cols = ['Spearman_PRIDICT2', 'Spearman_DeepPrime_PE2']
+    col_names = ['PRIDICT2.0 (HEK)', 'DeepPrime (PE2)']
     if 'Spearman_From_Scratch' in res_df.columns and not res_df['Spearman_From_Scratch'].isna().all():
         heatmap_cols.append('Spearman_From_Scratch')
         col_names.append('From scratch')
@@ -314,8 +329,8 @@ def generate_visualizations(df, res_df, cohort_name):
     
     # Plot 2: Heatmap comparison of Pearson correlations
     plt.figure(figsize=(11, 5))
-    pe_cols = ['Pearson_PRIDICT2', 'Pearson_DeepPrime_FT']
-    pe_names = ['PRIDICT2.0 (HEK)', 'DeepPrime-FT']
+    pe_cols = ['Pearson_PRIDICT2', 'Pearson_DeepPrime_PE2']
+    pe_names = ['PRIDICT2.0 (HEK)', 'DeepPrime (PE2)']
     if 'Pearson_From_Scratch' in res_df.columns and not res_df['Pearson_From_Scratch'].isna().all():
         pe_cols.append('Pearson_From_Scratch')
         pe_names.append('From scratch')
@@ -371,7 +386,7 @@ def generate_visualizations(df, res_df, cohort_name):
             gt_col: f"Measured ({domain_name})",
             pred_col: "DeepPrime6" if "dp6" in pred_col else pred_col,
             sc_col: "From-Scratch" if sc_col else None,
-            'pred_dp_base': "DeepPrime-FT",
+            'pred_dp_base': "DeepPrime (PE2)",
             'pred_pridict2_hek': "PRIDICT2.0"
         }
         rename_map = {k: v for k, v in rename_map.items() if k is not None}
@@ -421,9 +436,9 @@ def generate_grouped_bar_plots(df):
         
         row_dict = {
             'Domain': dom,
-            'DeepPrime-FT': sp_base,
-            'DeepPrime-FT_err_lower': sp_base - sp_base_ci[0],
-            'DeepPrime-FT_err_upper': sp_base_ci[1] - sp_base,
+            'DeepPrime (PE2)': sp_base,
+            'DeepPrime (PE2)_err_lower': sp_base - sp_base_ci[0],
+            'DeepPrime (PE2)_err_upper': sp_base_ci[1] - sp_base,
             'PRIDICT2.0': sp_pri,
             'PRIDICT2.0_err_lower': sp_pri - sp_pri_ci[0],
             'PRIDICT2.0_err_upper': sp_pri_ci[1] - sp_pri,
@@ -443,16 +458,16 @@ def generate_grouped_bar_plots(df):
         
     b_df = pd.DataFrame(panel_b_data)
     
-    # 1. ORIGINAL PANEL B (DeepPrime-FT, From scratch, DeepPrime6) - Matches paper figure
+    # 1. ORIGINAL PANEL B (DeepPrime (PE2), From scratch, DeepPrime6) - Matches paper figure
     if 'From_Scratch' in b_df.columns:
         sns.set_theme(style="ticks")
         fig, ax = plt.subplots(figsize=(6.5, 5), dpi=300)
         x = np.arange(len(b_df))
         width = 0.24
         
-        ax.bar(x - width, b_df['DeepPrime-FT'], width, 
-               yerr=[b_df['DeepPrime-FT_err_lower'], b_df['DeepPrime-FT_err_upper']], 
-               label='DeepPrime-FT', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3.5, error_kw={'elinewidth': 1})
+        ax.bar(x - width, b_df['DeepPrime (PE2)'], width, 
+               yerr=[b_df['DeepPrime (PE2)_err_lower'], b_df['DeepPrime (PE2)_err_upper']], 
+               label='DeepPrime (PE2)', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3.5, error_kw={'elinewidth': 1})
         ax.bar(x, b_df['From_Scratch'], width, 
                yerr=[b_df['From_Scratch_err_lower'], b_df['From_Scratch_err_upper']], 
                label='From scratch', color='#B3E2CD', edgecolor='black', linewidth=0.8, capsize=3.5, error_kw={'elinewidth': 1})
@@ -474,7 +489,7 @@ def generate_grouped_bar_plots(df):
         plt.close()
         print("Saved Original From Scratch Panel B (PNG and SVG).")
 
-    # 2. EXTENDED 4-MODEL PANEL B (DeepPrime-FT, PRIDICT2.0, From Scratch, DeepPrime6)
+    # 2. EXTENDED 4-MODEL PANEL B (DeepPrime (PE2), PRIDICT2.0, From Scratch, DeepPrime6)
     sns.set_theme(style="ticks")
     fig, ax = plt.subplots(figsize=(8.5, 5), dpi=300)
     x = np.arange(len(b_df))
@@ -482,9 +497,9 @@ def generate_grouped_bar_plots(df):
     
     if has_sc:
         width = 0.18
-        ax.bar(x - 1.5*width, b_df['DeepPrime-FT'], width, 
-               yerr=[b_df['DeepPrime-FT_err_lower'], b_df['DeepPrime-FT_err_upper']], 
-               label='DeepPrime-FT', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
+        ax.bar(x - 1.5*width, b_df['DeepPrime (PE2)'], width, 
+               yerr=[b_df['DeepPrime (PE2)_err_lower'], b_df['DeepPrime (PE2)_err_upper']], 
+               label='DeepPrime (PE2)', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
         ax.bar(x - 0.5*width, b_df['PRIDICT2.0'], width, 
                yerr=[b_df['PRIDICT2.0_err_lower'], b_df['PRIDICT2.0_err_upper']], 
                label='PRIDICT2.0', color='#8DD3C7', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
@@ -496,9 +511,9 @@ def generate_grouped_bar_plots(df):
                label='DeepPrime6', color='#FBB4AE', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
     else:
         width = 0.25
-        ax.bar(x - width, b_df['DeepPrime-FT'], width, 
-               yerr=[b_df['DeepPrime-FT_err_lower'], b_df['DeepPrime-FT_err_upper']], 
-               label='DeepPrime-FT', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
+        ax.bar(x - width, b_df['DeepPrime (PE2)'], width, 
+               yerr=[b_df['DeepPrime (PE2)_err_lower'], b_df['DeepPrime (PE2)_err_upper']], 
+               label='DeepPrime (PE2)', color='#80B1D3', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})
         ax.bar(x, b_df['PRIDICT2.0'], width, 
                yerr=[b_df['PRIDICT2.0_err_lower'], b_df['PRIDICT2.0_err_upper']], 
                label='PRIDICT2.0', color='#8DD3C7', edgecolor='black', linewidth=0.8, capsize=3, error_kw={'elinewidth': 1})

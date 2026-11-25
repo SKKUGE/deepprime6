@@ -7,22 +7,22 @@ cd "$PROJECT_ROOT"
 
 echo "Starting Full Run (Phase 1-13) on entire clinvar_fix.csv..."
 
-OUTDIR="data/full_output"
+OUTDIR="data/endogenous_pipeline/full_output"
 mkdir -p $OUTDIR
 ENV_PYTHON="${ENV_PYTHON:-${PYTHON_EXEC:-python}}"
 export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$(pwd)"
 
 echo "Phase 1: Normalize Variants"
 $ENV_PYTHON src/pegrna_pipeline/01_normalize_variants.py \
-    --input data/clinvar_fix.csv \
-    --fasta data/hg38.fa \
+    --input data/endogenous_pipeline/inputs/clinvar_fix.csv \
+    --fasta data/endogenous_pipeline/reference/hg38.fa \
     --run-id "FULL_RUN_01" \
     --output-dir $OUTDIR
 
 echo "Phase 2: Build Contexts & Designability"
 $ENV_PYTHON src/pegrna_pipeline/02_build_contexts_and_designability.py \
     --input $OUTDIR/normalized_variants.parquet \
-    --fasta data/hg38.fa \
+    --fasta data/endogenous_pipeline/reference/hg38.fa \
     --config config/pipeline_config.yaml \
     --output-dir $OUTDIR
 

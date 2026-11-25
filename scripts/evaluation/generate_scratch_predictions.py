@@ -42,7 +42,7 @@ def get_target_values(df, candidate_cols):
     return np.full(len(df), np.nan)
 
 def main():
-    test_path = "data/rq3_test_library_dedup.parquet"
+    test_path = "data/main_library/test_split/rq3_test_library_dedup.parquet"
     print(f"Loading deduplicated test set from {test_path}...", flush=True)
     df_test = pd.read_parquet(test_path)
     print(f"Loaded {len(df_test):,} test sequences.")
@@ -54,7 +54,7 @@ def main():
         r3 = f"Normalized+HEK-M2-{i}-7D-B1+pe_ratio_%"
         reps = [c for c in [r2, r3] if c in df_test.columns]
         if reps:
-            df_test[c3] = np.maximum(0.0, df_test[reps].mean(axis=1))
+            df_test[c3] = df_test[reps].clip(lower=0.0).mean(axis=1, skipna=False)
             pe_type = IDX_TO_PE_TYPE[i]
             qc_mask = get_pe6_qc_mask(df_test, pe_type=pe_type, read_count_filter=200, max_ctrl_bg=5.0)
             df_test.loc[~qc_mask, c3] = np.nan
@@ -73,11 +73,12 @@ def main():
 
     id_col = scored_df["ID"].values if "ID" in scored_df.columns else scored_df.index.values
 
+    os.makedirs("data/main_library/predictions", exist_ok=True)
     scratch_exports = {
-        "PE6a": ("pred_scratch_pe6a", "data/rq3_predictions_scratch_pe6a.csv"),
-        "PE6b": ("pred_scratch_pe6b", "data/rq3_predictions_scratch_pe6b.csv"),
-        "PE6c": ("pred_scratch_pe6c", "data/rq3_predictions_scratch_pe6c.csv"),
-        "PEmaxdRNaseH": ("pred_scratch_drnaseh", "data/rq3_predictions_scratch_drnaseh.csv"),
+        "PE6a": ("pred_scratch_pe6a", "data/main_library/predictions/rq3_predictions_scratch_pe6a.csv"),
+        "PE6b": ("pred_scratch_pe6b", "data/main_library/predictions/rq3_predictions_scratch_pe6b.csv"),
+        "PE6c": ("pred_scratch_pe6c", "data/main_library/predictions/rq3_predictions_scratch_pe6c.csv"),
+        "PEmaxdRNaseH": ("pred_scratch_drnaseh", "data/main_library/predictions/rq3_predictions_scratch_drnaseh.csv"),
     }
 
     print("\n--- Generating From Scratch Predictions on Test Set ---")

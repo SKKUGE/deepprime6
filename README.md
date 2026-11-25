@@ -79,7 +79,7 @@ bash scripts/train.sh from-scratch/pe6a-DP-from-scratch
 
 # Training with raw sample data on CPU (for verification)
 bash scripts/train.sh pe6a-DP-baseline \
-    data.data_dir=data/sample_data.csv \
+    data.data_dir=data/sample/sample_data.csv \
     trainer=cpu \
     data.batch_size=2 \
     model.model_weights.baseline=null

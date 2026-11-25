@@ -2,7 +2,7 @@
 """
 Prediction Pipeline for FRT Small Library (112 pegRNA designs)
 Evaluates 6 model families (7 score columns):
-1. DeepPrime-FT / base (DP_variant_293T_PE2max_epegRNA_Opti_220428; 20-model ensemble with original GENET GeneInteractionModelVanilla architecture)
+1. DeepPrime (PE2, HEK293T 5-model ensemble, exp(pred) - 1)
 2. DeepPrime6-pe6a (pe6a_mainft.ckpt)
 3. DeepPrime6-pe6b (pe6b_mainft.ckpt)
 4. DeepPrime6-pe6c (pe6c_mainft.ckpt)
@@ -37,9 +37,9 @@ from src.data.components.pe6_preprocess_data import preprocess_data
 from src.utils.inference import (
     char_to_onehot_tensor,
     prepare_biofeatures,
-    load_deepprime_base_models,
+    load_deepprime_pe2_models,
     load_deepprime6_models,
-    predict_deepprime_base,
+    predict_deepprime_pe2,
     predict_deepprime6,
 )
 from src.utils.predict_pridict2 import (
@@ -151,8 +151,12 @@ def main():
         processed_dp.loc[bad_rha, "RHA_len"] = excel_rha[bad_rha]
     print(f"  Feature extraction complete for {len(processed_dp)} rows.")
 
+    # Load DeepPrime (PE2, HEK293T) 5-model ensemble via codebase engine
+    print("  Loading 5 DeepPrime (PE2) ensemble models via codebase engine...", flush=True)
+    base_models, mean_pe2, std_pe2 = load_deepprime_pe2_models(device=device)
+
     # Prepare biofeatures and one-hot tensors via codebase canonical engine
-    b_tensor_base = prepare_biofeatures(processed_dp, "base", device=device)
+    b_tensor_base = prepare_biofeatures(processed_dp, mean_pe2, std_pe2, device=device)
     b_tensor_pe6 = prepare_biofeatures(processed_dp, "pe6", device=device)
 
     # Sequence encoding
@@ -162,17 +166,13 @@ def main():
         device
     )
 
-    # Load DeepPrime-base 20 models via codebase engine
-    print("  Loading 20 DeepPrime-base ensemble models via codebase engine...", flush=True)
-    base_models = load_deepprime_base_models(device=device)
-
     # Load DeepPrime6 checkpoints via codebase engine
     print("  Loading 4 DeepPrime6 checkpoints via codebase engine...", flush=True)
     dp6_models = load_deepprime6_models(device=device, is_scratch=False)
 
     # Run DeepPrime & DeepPrime6 forward passes
-    print("  Executing forward pass for DeepPrime-base and DeepPrime6...", flush=True)
-    preds_dp_base = predict_deepprime_base(base_models, g_tensor, b_tensor_base)
+    print("  Executing forward pass for DeepPrime (PE2) and DeepPrime6...", flush=True)
+    preds_dp_base = predict_deepprime_pe2(base_models, g_tensor, b_tensor_base, exp_transform=True)
     dp6_raw_preds = predict_deepprime6(dp6_models, g_tensor, b_tensor_pe6)
     dp6_predictions = {
         "pred_dp6_pe6a": dp6_raw_preds["pe6a"],

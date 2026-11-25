@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Phase 13: Plot Model Score Scatter")
-    parser.add_argument("--input", default="data/pilot_output/pegrna_designs_scored_normalized.parquet", help="Input pegrna_designs_scored_normalized.parquet")
-    parser.add_argument("--output-dir", default="data/pilot_output", help="Directory to store outputs")
+    parser.add_argument("--input", default="data/endogenous_pipeline/pilot_output/pegrna_designs_scored_normalized.parquet", help="Input pegrna_designs_scored_normalized.parquet")
+    parser.add_argument("--output-dir", default="data/endogenous_pipeline/pilot_output", help="Directory to store outputs")
     return parser.parse_args()
 
 def main():

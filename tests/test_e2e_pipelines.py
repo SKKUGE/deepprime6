@@ -6,7 +6,7 @@ import sys
 import pandas as pd
 
 PYTHON_EXE = sys.executable
-SAMPLE_DATA = "data/sample_data.csv"
+SAMPLE_DATA = "data/sample/sample_data.csv"
 SAMPLE_CKPT = "src/models/weights/DeepPrime6-weights/pe6a_mainft.ckpt"
 
 

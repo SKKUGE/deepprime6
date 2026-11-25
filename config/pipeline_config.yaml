@@ -33,5 +33,5 @@ scoring:
     - "MMR_proficient_cell_line_4" # TBD
 
 data_sources:
-  reference_fasta: "data/hg38.fa" # Update to actual hg38 path
-  clinvar_fix: "data/clinvar_fix.csv" # Update to actual clinvar_fix path
+  reference_fasta: "data/endogenous_pipeline/reference/hg38.fa" # Update to actual hg38 path
+  clinvar_fix: "data/endogenous_pipeline/inputs/clinvar_fix.csv" # Update to actual clinvar_fix path

@@ -43,28 +43,28 @@ MODELS = [
         "experiment": "from-scratch/pemaxdrnaseh-DP-from-scratch",
         "task_name": "PEmaxdRNaseH-scratch",
         "ckpt_name": "pemaxdrnaseh_scratch.ckpt",
-        "pred_csv": "data/rq3_predictions_scratch_drnaseh.csv",
+        "pred_csv": "data/main_library/predictions/rq3_predictions_scratch_drnaseh.csv",
     },
     {
         "name": "pe6a",
         "experiment": "from-scratch/pe6a-DP-from-scratch",
         "task_name": "PE6a-scratch",
         "ckpt_name": "pe6a_scratch.ckpt",
-        "pred_csv": "data/rq3_predictions_scratch_pe6a.csv",
+        "pred_csv": "data/main_library/predictions/rq3_predictions_scratch_pe6a.csv",
     },
     {
         "name": "pe6b",
         "experiment": "from-scratch/pe6b-DP-from-scratch",
         "task_name": "PE6b-scratch",
         "ckpt_name": "pe6b_scratch.ckpt",
-        "pred_csv": "data/rq3_predictions_scratch_pe6b.csv",
+        "pred_csv": "data/main_library/predictions/rq3_predictions_scratch_pe6b.csv",
     },
     {
         "name": "pe6c",
         "experiment": "from-scratch/pe6c-DP-from-scratch",
         "task_name": "PE6c-scratch",
         "ckpt_name": "pe6c_scratch.ckpt",
-        "pred_csv": "data/rq3_predictions_scratch_pe6c.csv",
+        "pred_csv": "data/main_library/predictions/rq3_predictions_scratch_pe6c.csv",
     },
 ]
 

@@ -247,7 +247,7 @@ def update_yaml_config(yaml_path, best_params):
     cfg["seed"] = int(best_params["seed"])
 
     # Ensure dataset is always the clean deduplicated zero-leakage dataset
-    cfg["data"]["data_dir"] = "${paths.data_dir}/processed_data_dedup.parquet"
+    cfg["data"]["data_dir"] = "${paths.data_dir}/main_library/processed_data_dedup.parquet"
     cfg["data"]["skip_preprocessing"] = True
     if "datasplit" not in cfg["data"]:
         cfg["data"]["datasplit"] = {}

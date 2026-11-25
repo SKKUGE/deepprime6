@@ -601,8 +601,8 @@ def main() -> None:
         dp6_models,
         device,
     )
-    # Verify exact parity with cached DP-FT raw and DP6 predictions
-    assert np.allclose(dp_res["pred_dp_ft_raw_log"], dp_existing["pred_dp_base"].values, atol=1e-4)
+    # Verify exact parity with cached DP-PE2 and DP6 predictions
+    assert np.allclose(dp_res["pred_dp_pe2"], dp_existing["pred_dp_base"].values, atol=1e-4)
     assert np.allclose(dp_res["pred_dp6_pe6a"], dp_existing["pred_dp6_pe6a"].values, atol=1e-4)
 
     dp_table = dp_existing[
@@ -687,7 +687,7 @@ def main() -> None:
         dp6_models,
         device,
     )
-    assert np.allclose(pr_res["pred_dp_ft_raw_log"], pr_existing["pred_dp_base"].values, atol=1e-4)
+    assert np.allclose(pr_res["pred_dp_pe2"], pr_existing["pred_dp_base"].values, atol=1e-4)
     assert np.allclose(pr_res["pred_dp6_pe6a"], pr_existing["pred_dp6_pe6a"].values, atol=1e-4)
 
     pr_table = pr_existing[
@@ -724,7 +724,7 @@ def main() -> None:
         dp6_models,
         device,
     )
-    assert np.allclose(rq3_res["pred_dp_ft_raw_log"], rq3["pred_dp_base"].values, atol=1e-4)
+    assert np.allclose(rq3_res["pred_dp_pe2"], rq3["pred_dp_base"].values, atol=1e-4)
     assert np.allclose(rq3_res["pred_dp6_pe6a"], rq3["pred_dp6_pe6a"].values, atol=1e-4)
 
     # Apply canonical 2-rep mean and strict QC mask matching 01_evaluate_figure3_main_library.py

@@ -261,7 +261,7 @@ def main():
             "pe6 Target Locus Overlap (Forward + RC)": int((dp_test["in_pe6_target"] | dp_test["in_pe6_non74"]).sum()),
             "pe6 Exact pegRNA Overlap": int(dp_test["in_pe6_exact_pegrna"].sum()),
             "PRIDICT2.0 Train Target Overlap": int(dp_test["in_pridict2_train_target"].sum()),
-            "DeepPrime-FT Train Target Overlap": int(dp_test["in_dp_train_target"].sum()),
+            "DeepPrime (PE2) Train Target Overlap": int(dp_test["in_dp_train_target"].sum()),
             "Total Excluded (Target Stratification)": int(dp_leakage_mask.sum()),
             "Final Strictly Unseen Test Set (N)": len(dp_test_filtered)
         },
@@ -271,7 +271,7 @@ def main():
             "pe6 Target Locus Overlap (Forward + RC)": int(sum(p_in_pe6)),
             "pe6 Exact pegRNA Overlap": 0,
             "PRIDICT2.0 Train Target Overlap": 0,
-            "DeepPrime-FT Train Target Overlap": int(sum(p_in_dp_train)),
+            "DeepPrime (PE2) Train Target Overlap": int(sum(p_in_dp_train)),
             "Total Excluded (Target Stratification)": int(p_test["in_bad_grp_id"].sum()),
             "Final Strictly Unseen Test Set (N)": len(p_test_filtered)
         }

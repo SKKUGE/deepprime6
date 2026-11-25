@@ -70,7 +70,7 @@ def main():
         "pred_pridict2",
     ]
     model_labels = [
-        "DeepPrime-FT",
+        "DeepPrime (PE2)",
         "PE2max-ΔRNaseH",
         "PE6a",
         "PE6b",

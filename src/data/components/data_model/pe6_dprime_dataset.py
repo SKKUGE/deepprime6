@@ -36,10 +36,12 @@ class PE6DeepPrimeDataset(Dataset):
 
         # Labels (gracefully fill with 0.0 for unlabeled inference datasets)
         self._label_col: List[str] = list(datafilter["PE_types"])
+        filtered_data = filtered_data.copy()
         for col in self._label_col:
             if col not in filtered_data.columns:
-                filtered_data = filtered_data.copy()
                 filtered_data[col] = 0.0
+            else:
+                filtered_data[col] = filtered_data[col].fillna(0.0)
 
         self.labels = torch.from_numpy(
             filtered_data[

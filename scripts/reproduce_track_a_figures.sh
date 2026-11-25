@@ -52,7 +52,7 @@ if [ "$FRESH_START" = true ]; then
 fi
 
 echo "Running the visualization script to generate predictive modelling capacity figures:"
-echo "- Panel B (Model comparison: DeepPrime-FT vs PRIDICT2.0 vs From Scratch vs DeepPrime6)"
+echo "- Panel B (Model comparison: DeepPrime (PE2) vs PRIDICT2.0 vs From Scratch vs DeepPrime6)"
 echo "- Panel C (Edit type comparison for DeepPrime6)"
 echo "- Boxplots, pairplots, and correlation heatmaps"
 echo "--------------------------------------------------------"

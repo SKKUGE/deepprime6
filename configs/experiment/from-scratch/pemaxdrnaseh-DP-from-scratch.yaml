@@ -29,7 +29,7 @@ tags:
 - from-scratch
 seed: 42
 data:
-  data_dir: ${paths.data_dir}/processed_data_dedup.parquet
+  data_dir: ${paths.data_dir}/main_library/processed_data_dedup.parquet
   batch_size: 64
   skip_preprocessing: true
   datasplit:

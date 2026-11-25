@@ -274,7 +274,7 @@ def main():
     ]
     model_labels = [
         "Ground Truth",
-        "DeepPrime-FT",
+        "DeepPrime (PE2)",
         "PRIDICT2.0",
         "DP6 (PE6a)",
         "DP6 (PE6b)",
@@ -307,7 +307,7 @@ def main():
     else:
         perf_records = []
         eval_models_map = [
-            ("DeepPrime-FT", "pred_dp_base"),
+            ("DeepPrime (PE2)", "pred_dp_base"),
             ("PRIDICT2.0", "pred_pridict2_hek"),
             ("DeepPrime6-pe6a", "pred_dp6_pe6a"),
             ("DeepPrime6-pe6b", "pred_dp6_pe6b"),
@@ -473,7 +473,7 @@ def main():
     fig, axes = plt.subplots(1, 2, figsize=(18, 6))
 
     eval_models = [
-        ("DeepPrime-FT", "pred_dp_base", "#3182CE", "s-"),
+        ("DeepPrime (PE2)", "pred_dp_base", "#3182CE", "s-"),
         ("PRIDICT2.0", "pred_pridict2_hek", "#319795", "^-"),
         ("DP6 (PE6a)", "pred_dp6_pe6a", "#DD6B20", "o-"),
         ("DP6 (PE6b)", "pred_dp6_pe6b", "#E53E3E", "D-"),

@@ -4,7 +4,7 @@ Figure 3 Evaluation Script: Main Library Strictly Unseen Test Set Performance
 
 Evaluates:
 - Ground-truth measured efficiency on N=2,325 strictly unseen test pegRNAs
-- DeepPrime-base (20-model ensemble)
+- DeepPrime (PE2, HEK293T 5-model ensemble, exp(pred) - 1)
 - DeepPrime6-PEmaxdRNaseH (pemaxdrnaseh_mainft.ckpt)
 - DeepPrime6-PE6a (pe6a_mainft.ckpt)
 - DeepPrime6-PE6b (pe6b_mainft.ckpt)
@@ -109,7 +109,7 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}", flush=True)
 
-    test_path = "data/rq3_test_library_dedup.parquet"
+    test_path = "data/main_library/test_split/rq3_test_library_dedup.parquet"
     if not os.path.exists(test_path):
         raise FileNotFoundError(f"Test dataset not found at {test_path}!")
 
@@ -125,7 +125,7 @@ def main():
         r3 = f"Normalized+HEK-M2-{i}-7D-B1+pe_ratio_%"
         reps = [c for c in [r2, r3] if c in df_test.columns]
         if reps:
-            df_test[c3] = np.maximum(0.0, df_test[reps].mean(axis=1))
+            df_test[c3] = df_test[reps].clip(lower=0.0).mean(axis=1, skipna=False)
             pe_type = IDX_TO_PE_TYPE[i]
             qc_mask = get_pe6_qc_mask(df_test, pe_type=pe_type, read_count_filter=200, max_ctrl_bg=5.0)
             df_test.loc[~qc_mask, c3] = np.nan
@@ -133,25 +133,24 @@ def main():
                 df_test.loc[~qc_mask, pe_type] = np.nan
 
     # Prepare features
-    # 1. Base normalization for DeepPrime-base
-    norm_mean_base = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/mean.csv", index_col=0, header=None).squeeze()
-    norm_std_base = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/std.csv", index_col=0, header=None).squeeze()
-
-    # 2. Canonical PE6 normalization for DeepPrime6 checkpoints
+    # 1. Canonical PE6 normalization for DeepPrime6 checkpoints
     pe6_ckpt_dir = "src/models/weights/DeepPrime6-weights"
     norm_mean_pe6 = pd.read_csv(os.path.join(pe6_ckpt_dir, "pe6_mean.csv"), index_col=0, header=None).squeeze()
     norm_std_pe6 = pd.read_csv(os.path.join(pe6_ckpt_dir, "pe6_std.csv"), index_col=0, header=None).squeeze()
 
-    from src.utils.inference import prepare_biofeatures
+    from src.utils.inference import (
+        load_deepprime_pe2_models,
+        predict_deepprime_pe2,
+        prepare_biofeatures,
+    )
+    print("Loading DeepPrime (PE2, HEK293T) 5-model ensemble...", flush=True)
+    dp_base_models, norm_mean_base, norm_std_base = load_deepprime_pe2_models(device=device)
+
     b_tensor_base = prepare_biofeatures(df_test, norm_mean_base, norm_std_base, device)
     b_tensor_pe6 = prepare_biofeatures(df_test, norm_mean_pe6, norm_std_pe6, device)
 
     wt_seqs = df_test["Target"].tolist() if "Target" in df_test.columns else df_test["WideTargetSequence"].tolist()
     ed_seqs = df_test["Masked_EditSeq"].tolist() if "Masked_EditSeq" in df_test.columns else wt_seqs
-
-    # Load models
-    print("Loading DeepPrime-base ensemble (20 models)...", flush=True)
-    dp_base_models = load_deepprime_base_models("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428", device)
 
     print("Loading DeepPrime6 4 checkpoints...", flush=True)
     ckpt_dir = "src/models/weights/DeepPrime6-weights"
@@ -176,7 +175,9 @@ def main():
             b_batch_base = b_tensor_base[start_idx:end_idx]
             b_batch_pe6 = b_tensor_pe6[start_idx:end_idx]
 
-            preds_dp_base[start_idx:end_idx] = predict_deepprime_base(dp_base_models, g_batch, b_batch_base).cpu().numpy().flatten()
+            preds_dp_base[start_idx:end_idx] = predict_deepprime_pe2(
+                dp_base_models, g_batch, b_batch_base, batch_size=batch_size, exp_transform=True
+            ).flatten()
             for k, m in dp6_models.items():
                 preds_dp6[k][start_idx:end_idx] = m((g_batch, b_batch_pe6)).cpu().numpy().flatten()
 
@@ -198,8 +199,8 @@ def main():
         delta_r = r_dp6 - r_base
         results.append({
             "PE System": model_name,
-            "DeepPrime-FT (Pearson r)": round(r_base, 4),
-            "DeepPrime-FT (Spearman rho)": round(rho_base, 4),
+            "DeepPrime (PE2) (Pearson r)": round(r_base, 4),
+            "DeepPrime (PE2) (Spearman rho)": round(rho_base, 4),
             "DeepPrime6 (Pearson r)": round(r_dp6, 4),
             "DeepPrime6 (Spearman rho)": round(rho_dp6, 4),
             "Delta Pearson r": round(delta_r, 4),

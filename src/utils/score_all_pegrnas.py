@@ -271,7 +271,7 @@ def main():
     
     # 1. Load data
     print("Loading converted ClinVar 710k pegRNA dataset...")
-    df = pd.read_csv("data/MFE_randompeg_RHA30_0.71M_result.csv")
+    df = pd.read_csv("data/endogenous_pipeline/inputs/MFE_randompeg_RHA30_0.71M_result.csv")
     print(f"Loaded {len(df)} pegRNA configurations.")
     
     # 2. Extract features in parallel using multiprocessing
@@ -492,8 +492,9 @@ def main():
     output_df['pred_pridict2_hek'] = feat_df['pred_pridict2_hek']
     output_df['pred_pridict2_k562'] = feat_df['pred_pridict2_k562']
     
-    output_df.to_csv("data/MFE_randompeg_RHA30_0.71M_scored.csv", index=False)
-    print("Full predictions saved to data/MFE_randompeg_RHA30_0.71M_scored.csv")
+    os.makedirs("data/endogenous_pipeline/predictions", exist_ok=True)
+    output_df.to_csv("data/endogenous_pipeline/predictions/MFE_randompeg_RHA30_0.71M_scored.csv", index=False)
+    print("Full predictions saved to data/endogenous_pipeline/predictions/MFE_randompeg_RHA30_0.71M_scored.csv")
     
     # 6. Candidate Selection (REQ-2, REQ-3, REQ-4)
     print("Selecting candidates...")
@@ -573,8 +574,8 @@ def main():
         'pct_dp_base', 'pct_dp6', 'pct_pridict2', 'disagreement'
     ]
     selected_50_output = selected_50[selected_50_cols]
-    selected_50_output.to_csv("data/selected_50_validation_candidates.csv", index=False)
-    print("Selected 50 candidates saved to data/selected_50_validation_candidates.csv")
+    selected_50_output.to_csv("data/endogenous_pipeline/predictions/selected_50_validation_candidates.csv", index=False)
+    print("Selected 50 candidates saved to data/endogenous_pipeline/predictions/selected_50_validation_candidates.csv")
     
     # Calculate and verify correlation matrices
     print("Pairwise correlation in full library:")

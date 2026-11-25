@@ -7,7 +7,7 @@ Master Training Script for Final 4 DeepPrime6 Models:
 - PEmaxdRNaseH (pemaxdrnaseh-DP-baseline)
 
 Using:
-- Deduplicated pegRNA dataset: data/processed_data_dedup.parquet
+- Deduplicated pegRNA dataset: data/main_library/processed_data_dedup.parquet
 - Strict Guide(spacer) grouping split (Zero leakage across train/val/test)
 - Best hyperparameters verified from Optuna fine-tuning search
 - Automatic checkpoint archiving to src/models/weights/DeepPrime6-weights/

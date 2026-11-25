@@ -9,7 +9,7 @@ echo "Starting Pilot Run (Phase 6-8) on Phase 5 outputs..."
 
 ENV_PYTHON="${ENV_PYTHON:-${PYTHON_EXEC:-python}}"
 export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$(pwd)"
-OUTDIR="data/pilot_output"
+OUTDIR="data/endogenous_pipeline/pilot_output"
 
 echo "Phase 6: Score DeepPrime(base)"
 $ENV_PYTHON src/pegrna_pipeline/06_score_deepprime.py \
