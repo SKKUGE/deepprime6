@@ -543,18 +543,18 @@ def generate_grouped_bar_plots(df):
         edit_type = row['Edit_type'] if 'Edit_type' in row else row.get('Edit type', '')
         if str(edit_type).capitalize() == 'Sub' and 1 <= edit_len <= 3:
             return '1-3 nt substitution'
-        elif str(edit_type).capitalize() == 'Del' and 1 <= edit_len <= 4:
-            return '1-4 nt deletion'
+        elif str(edit_type).capitalize() == 'Del' and 1 <= edit_len <= 3:
+            return '1-3 nt deletion'
         elif str(edit_type).capitalize() == 'Ins' and 1 <= edit_len <= 3:
             return '1-3 nt insertion'
-        elif str(edit_type).capitalize() == 'Ins' and 3 < edit_len <= 19:
-            return '3-19 nt insertion'
+        elif str(edit_type).capitalize() == 'Ins' and 4 <= edit_len <= 16:
+            return '4-16 nt insertion'
         return None
 
     df_c = df.copy()
     df_c['Edit_Category'] = df_c.apply(classify_edit, axis=1)
     
-    categories = ['1-3 nt substitution', '1-3 nt deletion', '1-3 nt insertion', '3-19 nt insertion']
+    categories = ['1-3 nt substitution', '1-3 nt deletion', '1-3 nt insertion', '4-16 nt insertion']
     colors_c = ['#7B7FD4', '#78C9A6', '#EE8684', '#C27DE5'] 
     
     panel_c_data = []
