@@ -272,8 +272,9 @@ class PE6DataModule(LightningDataModule):
                 log.info(f"Split Verification PASSED: 0 group leakage across Train ({len(X_train)}), Val ({len(X_val)}), Test ({len(X_test)}) on {group_col}")
 
             # Save clean deduplicated test set for orthogonal benchmarks & Figure 3 evaluation
-            test_save_path = "data/rq3_test_library_dedup.parquet"
+            test_save_path = "data/main_library/test_split/rq3_test_library_dedup.parquet"
             if not pathlib.Path(test_save_path).exists() and "processed_data_dedup" in str(data_path):
+                pathlib.Path(test_save_path).parent.mkdir(parents=True, exist_ok=True)
                 X_test.to_parquet(test_save_path, index=False)
                 log.info(f"Saved strictly unseen test split to {test_save_path} ({len(X_test)} samples)")
 

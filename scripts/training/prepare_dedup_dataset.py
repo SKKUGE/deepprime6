@@ -29,14 +29,14 @@ _repo_root = find_project_root()
 os.chdir(_repo_root)
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
-_local_src = os.path.join(_repo_root, "data", "processed_data.parquet")
+_local_src = os.path.join(_repo_root, "data", "main_library", "processed_data.parquet")
 DEFAULT_SRC = os.environ.get("PE6_RAW_PARQUET", _local_src)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deduplicate PE6 dataset by unique pegRNA design.")
     parser.add_argument("--src_parquet", type=str, default=DEFAULT_SRC, help="Path to raw processed parquet file.")
-    parser.add_argument("--output_parquet", type=str, default="data/processed_data_dedup.parquet", help="Path to save deduplicated dataset.")
-    parser.add_argument("--test_output", type=str, default="data/rq3_test_library_dedup.parquet", help="Path to export clean test split.")
+    parser.add_argument("--output_parquet", type=str, default="data/main_library/processed_data_dedup.parquet", help="Path to save deduplicated dataset.")
+    parser.add_argument("--test_output", type=str, default="data/main_library/test_split/rq3_test_library_dedup.parquet", help="Path to export clean test split.")
     return parser.parse_args()
 
 def main():
@@ -60,6 +60,11 @@ def main():
     print(f"Number of efficiency columns: {len(eff_cols)}")
     print(f"Number of read count columns: {len(rc_cols)}")
 
+    # Clip negative efficiency values at 0.0 per replicate BEFORE barcode deduplication and replicate averaging,
+    # while preserving NaN values prior to any fillna(0).
+    for col in eff_cols:
+        df[col] = df[col].clip(lower=0.0)
+
     agg_dict = {}
     for col in df.columns:
         if col in avail_key:
@@ -80,11 +85,13 @@ def main():
     # - PE6e ~ PE6g: 2 replicates (HEK-M-*-B2 + HEK-M-*-B1) / 2.0 (M2 missing; B2 correlation r > 0.85)
     print("Updating training target columns strictly using EFF_PAIR from src/utils/dataprep.py...")
     from src.utils.dataprep import EFF_PAIR
-    for col_name, eff_cols in EFF_PAIR.items():
-        valid_cols = [c for c in eff_cols if c in df_dedup.columns]
+    for col_name, rep_cols in EFF_PAIR.items():
+        valid_cols = [c for c in rep_cols if c in df_dedup.columns]
         if len(valid_cols) > 0:
-            df_dedup[col_name] = np.maximum(0.0, df_dedup[valid_cols].mean(axis=1))
-            print(f"  {col_name}: updated from {valid_cols} (mean={df_dedup[col_name].mean():.3f})")
+            for r_col in valid_cols:
+                df_dedup[r_col] = df_dedup[r_col].clip(lower=0.0)
+            df_dedup[col_name] = df_dedup[valid_cols].mean(axis=1, skipna=False)
+            print(f"  {col_name}: updated from {valid_cols} (mean={df_dedup[col_name].mean():.3f}, na={df_dedup[col_name].isna().sum()})")
 
     # Save deduplicated parquet
     os.makedirs(os.path.dirname(args.output_parquet) or ".", exist_ok=True)
@@ -111,10 +118,10 @@ def main():
     test_df.to_csv(csv_test_output, index=False)
     print(f"Saved strictly unseen test library to {args.test_output} and {csv_test_output}: {test_df.shape}")
 
-    # Synchronize to data/rq3_test_library.* as well
-    test_df.to_parquet("data/rq3_test_library.parquet")
-    test_df.to_csv("data/rq3_test_library.csv", index=False)
-    print("Synchronized data/rq3_test_library.parquet and data/rq3_test_library.csv")
+    # Synchronize to data/main_library/test_split/rq3_test_library.* as well
+    test_df.to_parquet("data/main_library/test_split/rq3_test_library.parquet")
+    test_df.to_csv("data/main_library/test_split/rq3_test_library.csv", index=False)
+    print("Synchronized data/main_library/test_split/rq3_test_library.parquet and .csv")
 
     # Export full deduplicated CSV with split labels and per-editor QC-filtered CSVs
     from src.utils.dataprep import get_pe6_qc_mask
@@ -125,7 +132,7 @@ def main():
     df_with_splits.iloc[val_idx, df_with_splits.columns.get_loc("split")] = "val"
     df_with_splits.iloc[test_idx, df_with_splits.columns.get_loc("split")] = "test"
 
-    splits_csv_path = "data/processed_data_dedup_with_splits.csv"
+    splits_csv_path = "data/main_library/processed_data_dedup_with_splits.csv"
     df_with_splits.to_csv(splits_csv_path, index=False)
     print(f"Saved {splits_csv_path}: {df_with_splits.shape}")
 
@@ -137,7 +144,7 @@ def main():
         ("PE2max", "PEmax"),
     ]
 
-    qc_dir = "data/qc_filtered"
+    qc_dir = "data/main_library/qc_filtered"
     os.makedirs(qc_dir, exist_ok=True)
     df_with_qc_and_splits = df_with_splits.copy()
 
@@ -157,7 +164,7 @@ def main():
             f"(train={vc.get('train', 0):,}, val={vc.get('val', 0):,}, test={vc.get('test', 0):,})"
         )
 
-    qc_splits_csv_path = "data/processed_data_dedup_with_qc_and_splits.csv"
+    qc_splits_csv_path = "data/main_library/processed_data_dedup_with_qc_and_splits.csv"
     df_with_qc_and_splits.to_csv(qc_splits_csv_path, index=False)
     print(f"Saved {qc_splits_csv_path}: {df_with_qc_and_splits.shape}")
 

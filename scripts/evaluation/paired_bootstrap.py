@@ -15,9 +15,9 @@ os.chdir(REPO_ROOT)
 
 def main():
     print("=== Running Paired Bootstrap Significance Testing ===", flush=True)
-    gt_path = "data/rq3_test_library_dedup.parquet"
+    gt_path = "data/main_library/test_split/rq3_test_library_dedup.parquet"
     if not os.path.exists(gt_path):
-        gt_path = "data/rq3_test_library.parquet"
+        gt_path = "data/main_library/test_split/rq3_test_library.parquet"
     gt = pd.read_parquet(gt_path).reset_index(drop=True)
 
     if REPO_ROOT not in sys.path:
@@ -33,7 +33,7 @@ def main():
         ]
         valid_reps = [c for c in rep_cols if c in gt.columns]
         if len(valid_reps) > 0:
-            gt[col_clean] = np.maximum(0.0, gt[valid_reps].mean(axis=1))
+            gt[col_clean] = gt[valid_reps].clip(lower=0.0).mean(axis=1, skipna=False)
             pe_type = IDX_TO_PE_TYPE[i]
             qc_mask = get_pe6_qc_mask(gt, pe_type=pe_type, read_count_filter=200, max_ctrl_bg=5.0)
             gt.loc[~qc_mask, col_clean] = np.nan
@@ -46,18 +46,18 @@ def main():
         id_col = "ID" if "ID" in df.columns else "orig_index"
         return df.set_index(id_col)["Prediction"].rename(name)
 
-    dp_base = load_pred("data/rq3_predictions_dp_base.csv", "pred_dp_base")
-    dp6_a = load_pred("data/rq3_predictions_dp6.csv", "pred_dp6_pe6a")
-    dp6_b = load_pred("data/rq3_predictions_dp6_pe6b.csv", "pred_dp6_pe6b")
-    dp6_c = load_pred("data/rq3_predictions_dp6_pe6c.csv", "pred_dp6_pe6c")
-    dp6_drn = load_pred("data/rq3_predictions_dp6_drnaseh.csv", "pred_dp6_drnaseh")
+    dp_base = load_pred("data/main_library/predictions/rq3_predictions_dp_base.csv", "pred_dp_base")
+    dp6_a = load_pred("data/main_library/predictions/rq3_predictions_dp6.csv", "pred_dp6_pe6a")
+    dp6_b = load_pred("data/main_library/predictions/rq3_predictions_dp6_pe6b.csv", "pred_dp6_pe6b")
+    dp6_c = load_pred("data/main_library/predictions/rq3_predictions_dp6_pe6c.csv", "pred_dp6_pe6c")
+    dp6_drn = load_pred("data/main_library/predictions/rq3_predictions_dp6_drnaseh.csv", "pred_dp6_drnaseh")
 
-    sc_a = load_pred("data/rq3_predictions_scratch_pe6a.csv", "pred_scratch_pe6a")
-    sc_b = load_pred("data/rq3_predictions_scratch_pe6b.csv", "pred_scratch_pe6b")
-    sc_c = load_pred("data/rq3_predictions_scratch_pe6c.csv", "pred_scratch_pe6c")
-    sc_drn = load_pred("data/rq3_predictions_scratch_drnaseh.csv", "pred_scratch_drnaseh")
+    sc_a = load_pred("data/main_library/predictions/rq3_predictions_scratch_pe6a.csv", "pred_scratch_pe6a")
+    sc_b = load_pred("data/main_library/predictions/rq3_predictions_scratch_pe6b.csv", "pred_scratch_pe6b")
+    sc_c = load_pred("data/main_library/predictions/rq3_predictions_scratch_pe6c.csv", "pred_scratch_pe6c")
+    sc_drn = load_pred("data/main_library/predictions/rq3_predictions_scratch_drnaseh.csv", "pred_scratch_drnaseh")
 
-    pridict = pd.read_csv("data/rq3_predictions_pridict2.csv")
+    pridict = pd.read_csv("data/main_library/predictions/rq3_predictions_pridict2.csv")
     pr_id = "ID" if "ID" in pridict.columns else "REF_ID"
     pr_hek = pridict.set_index(pr_id)["PRIDICT2_0_editing_Score_deep_HEK"].rename("pred_pridict2_hek")
 
@@ -117,14 +117,14 @@ def main():
         results.append({
             "Domain": dom_name,
             "N": n,
-            "DeepPrime_FT_rho": round(rho_base, 4),
+            "DeepPrime_PE2_rho": round(rho_base, 4),
             "PRIDICT2_rho": round(rho_pr, 4),
             "From_Scratch_rho": round(rho_sc, 4),
             "DeepPrime6_rho": round(rho_dp6, 4),
-            "Delta_over_FT": round(delta_over_base, 4),
-            "95%_CI_Delta_FT": f"[{np.percentile(diffs_base, 2.5):.4f}, {np.percentile(diffs_base, 97.5):.4f}]",
-            "Bootstrap_Probability_Delta_FT_gt0": float((diffs_base > 0).mean()),
-            "One_Sided_P_val_Delta_FT": float((diffs_base <= 0).mean()),
+            "Delta_over_PE2": round(delta_over_base, 4),
+            "95%_CI_Delta_PE2": f"[{np.percentile(diffs_base, 2.5):.4f}, {np.percentile(diffs_base, 97.5):.4f}]",
+            "Bootstrap_Probability_Delta_PE2_gt0": float((diffs_base > 0).mean()),
+            "One_Sided_P_val_Delta_PE2": float((diffs_base <= 0).mean()),
             "Delta_over_PRIDICT2": round(delta_over_pr, 4),
             "95%_CI_Delta_PRIDICT2": f"[{np.percentile(diffs_pr, 2.5):.4f}, {np.percentile(diffs_pr, 97.5):.4f}]",
             "One_Sided_P_val_Delta_PRIDICT2": float((diffs_pr <= 0).mean()),

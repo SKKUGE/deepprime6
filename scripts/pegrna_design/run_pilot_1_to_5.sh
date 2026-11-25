@@ -8,23 +8,23 @@ cd "$PROJECT_ROOT"
 echo "Starting Pilot Run (Phase 1-5) on first 500 variants..."
 
 ENV_PYTHON="${ENV_PYTHON:-python}"
-OUTDIR="data/pilot_output"
+OUTDIR="data/endogenous_pipeline/pilot_output"
 mkdir -p $OUTDIR
 
 # Extract the header and first 500 lines for the pilot run
-head -n 501 data/clinvar_fix.csv > data/clinvar_fix_pilot.csv
+head -n 501 data/endogenous_pipeline/inputs/clinvar_fix.csv > data/endogenous_pipeline/inputs/clinvar_fix_pilot.csv
 
 echo "Phase 1: Normalize Variants"
 $ENV_PYTHON src/pegrna_pipeline/01_normalize_variants.py \
-    --input data/clinvar_fix_pilot.csv \
-    --fasta data/hg38.fa \
+    --input data/endogenous_pipeline/inputs/clinvar_fix_pilot.csv \
+    --fasta data/endogenous_pipeline/reference/hg38.fa \
     --run-id "PILOT_01" \
     --output-dir $OUTDIR
 
 echo "Phase 2: Build Contexts & Designability"
 $ENV_PYTHON src/pegrna_pipeline/02_build_contexts_and_designability.py \
     --input $OUTDIR/normalized_variants.parquet \
-    --fasta data/hg38.fa \
+    --fasta data/endogenous_pipeline/reference/hg38.fa \
     --config config/pipeline_config.yaml \
     --output-dir $OUTDIR
 

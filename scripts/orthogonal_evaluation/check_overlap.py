@@ -40,8 +40,8 @@ def main():
     print("Loading datasets for overlap analysis...", flush=True)
     
     # 1. Our full library & our training set
-    pe6_full = pd.read_csv("data/Library design/pairwise_library_design/FULL_LIBRARY/results/pe6_full_library.csv")
-    rq3_test = pd.read_parquet("data/rq3_test_library.parquet")
+    pe6_full = pd.read_csv("data/library_design/pairwise_library_design/FULL_LIBRARY/results/pe6_full_library.csv")
+    rq3_test = pd.read_parquet("data/main_library/test_split/rq3_test_library.parquet")
     if "REF_ID" in rq3_test.columns:
         test_ref_ids = set(rq3_test["REF_ID"])
         pe6_train = pe6_full[~pe6_full["REF_ID"].isin(test_ref_ids)].copy()
@@ -62,7 +62,7 @@ def main():
     pe6_train_guide_wts = set(zip(pe6_train["Guide"].dropna().str.upper(), pe6_train["WideTargetSequence"].dropna().str.upper()))
 
     print("\n=== 1. Checking DeepPrime Official Test Set ===", flush=True)
-    dp_test_path = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/dst/Generalization_Test/Table_S2_1_Test_Set.csv"
+    dp_test_path = "data/library_design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/dst/Generalization_Test/Table_S2_1_Test_Set.csv"
     dp_test = pd.read_csv(dp_test_path)
     col_wts_dp = [c for c in dp_test.columns if c.startswith("Wide target sequence")][0]
     dp_wts_series = dp_test[col_wts_dp].str.upper()
@@ -106,7 +106,7 @@ def main():
     print(f"Overlap with our Actual Training Set by (Guide + Target): {p_in_train_gw.sum():,} rows", flush=True)
 
     # Check DeepPrime pretraining overlap with PRIDICT2 test set
-    dp_train_wts_path = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S2-1.csv"
+    dp_train_wts_path = "data/library_design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S2-1.csv"
     print("\n=== Checking DeepPrime-Base pretraining overlap with PRIDICT2 test set ===", flush=True)
     dp_all = pd.read_csv(dp_train_wts_path, usecols=["Data set name", col_wts_dp])
     dp_train_wts = set(dp_all[dp_all["Data set name"] == "Train"][col_wts_dp].str.upper())

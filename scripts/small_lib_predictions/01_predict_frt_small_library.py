@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Prediction Pipeline for FRT Small Library (112 pegRNA designs)
-Evaluates 6 models:
-1. DeepPrime-base (20-model ensemble with original GENET GeneInteractionModelVanilla architecture)
+Evaluates 6 model families (7 score columns):
+1. DeepPrime (PE2, HEK293T 5-model ensemble, exp(pred) - 1)
 2. DeepPrime6-pe6a (pe6a_mainft.ckpt)
 3. DeepPrime6-pe6b (pe6b_mainft.ckpt)
 4. DeepPrime6-pe6c (pe6c_mainft.ckpt)
 5. DeepPrime6-pemaxdrnaseh (pemaxdrnaseh_mainft.ckpt)
-6. PRIDICT2.0 (Official released fold 0 model, predicting HEK score * 100)
+6. PRIDICT2.0 (Official released fold 0 model, predicting HEK [MMR-deficient] and K562 [MMR-proficient] scores * 100)
 
 Maintains 1:1 mapping with original INDEX/ID and documents failure reasons for edge cases.
 """
@@ -37,9 +37,9 @@ from src.data.components.pe6_preprocess_data import preprocess_data
 from src.utils.inference import (
     char_to_onehot_tensor,
     prepare_biofeatures,
-    load_deepprime_base_models,
+    load_deepprime_pe2_models,
     load_deepprime6_models,
-    predict_deepprime_base,
+    predict_deepprime_pe2,
     predict_deepprime6,
 )
 from src.utils.predict_pridict2 import (
@@ -55,8 +55,8 @@ def main():
     print(f"=== FRT Small Library Inference Pipeline ===", flush=True)
     print(f"Executing on device: {device}", flush=True)
 
-    input_excel = "data/frt-library-prediction/frt-small-lib_table_final_260128 (3).xlsm"
-    out_dir_data = "data/frt-library-prediction"
+    input_excel = "data/small_library/frt/frt-small-lib_table_final_260128 (3).xlsm"
+    out_dir_data = "data/small_library/frt"
     plots_dir_exp = "notebooks/plots/frt_small_library"
     os.makedirs(out_dir_data, exist_ok=True)
     os.makedirs(plots_dir_exp, exist_ok=True)
@@ -90,6 +90,7 @@ def main():
     res_df["pred_dp6_pe6b"] = np.nan
     res_df["pred_dp6_pe6c"] = np.nan
     res_df["pred_pridict2"] = np.nan
+    res_df["pred_pridict2_k562"] = np.nan
 
     # Status columns
     res_df["status_deepprime"] = "Pending"
@@ -150,8 +151,12 @@ def main():
         processed_dp.loc[bad_rha, "RHA_len"] = excel_rha[bad_rha]
     print(f"  Feature extraction complete for {len(processed_dp)} rows.")
 
+    # Load DeepPrime (PE2, HEK293T) 5-model ensemble via codebase engine
+    print("  Loading 5 DeepPrime (PE2) ensemble models via codebase engine...", flush=True)
+    base_models, mean_pe2, std_pe2 = load_deepprime_pe2_models(device=device)
+
     # Prepare biofeatures and one-hot tensors via codebase canonical engine
-    b_tensor_base = prepare_biofeatures(processed_dp, "base", device=device)
+    b_tensor_base = prepare_biofeatures(processed_dp, mean_pe2, std_pe2, device=device)
     b_tensor_pe6 = prepare_biofeatures(processed_dp, "pe6", device=device)
 
     # Sequence encoding
@@ -161,17 +166,13 @@ def main():
         device
     )
 
-    # Load DeepPrime-base 20 models via codebase engine
-    print("  Loading 20 DeepPrime-base ensemble models via codebase engine...", flush=True)
-    base_models = load_deepprime_base_models(device=device)
-
     # Load DeepPrime6 checkpoints via codebase engine
     print("  Loading 4 DeepPrime6 checkpoints via codebase engine...", flush=True)
     dp6_models = load_deepprime6_models(device=device, is_scratch=False)
 
     # Run DeepPrime & DeepPrime6 forward passes
-    print("  Executing forward pass for DeepPrime-base and DeepPrime6...", flush=True)
-    preds_dp_base = predict_deepprime_base(base_models, g_tensor, b_tensor_base)
+    print("  Executing forward pass for DeepPrime (PE2) and DeepPrime6...", flush=True)
+    preds_dp_base = predict_deepprime_pe2(base_models, g_tensor, b_tensor_base, exp_transform=True)
     dp6_raw_preds = predict_deepprime6(dp6_models, g_tensor, b_tensor_pe6)
     dp6_predictions = {
         "pred_dp6_pe6a": dp6_raw_preds["pe6a"],
@@ -244,12 +245,19 @@ def main():
         tmp_df = pd.concat(tmp, axis=0, ignore_index=True)
         agg_df = compute_average_predictions(tmp_df, grp_cols=["seq_id", "dataset_name"])
 
-        # Extract HEK scores (* 100 to match percentage efficiency scale)
+        # Extract HEK (MMR-deficient) and K562 (MMR-proficient) scores (* 100 to match percentage efficiency scale)
         hek_df = agg_df[agg_df["dataset_name"] == "HEK"].sort_values("seq_id")
+        k562_df = agg_df[agg_df["dataset_name"] == "K562"].sort_values("seq_id")
+        assert len(hek_df) == len(valid_pr_indices), f"HEK prediction count mismatch: {len(hek_df)} vs {len(valid_pr_indices)}"
+        assert len(k562_df) == len(valid_pr_indices), f"K562 prediction count mismatch: {len(k562_df)} vs {len(valid_pr_indices)}"
+        assert np.array_equal(hek_df["seq_id"].values, np.arange(len(valid_pr_indices))), "HEK seq_id alignment mismatch"
+        assert np.array_equal(k562_df["seq_id"].values, np.arange(len(valid_pr_indices))), "K562 seq_id alignment mismatch"
         hek_scores = (hek_df["pred_averageedited"].values) * 100
+        k562_scores = (k562_df["pred_averageedited"].values) * 100
 
         for i, orig_idx in enumerate(valid_pr_indices):
             res_df.loc[orig_idx, "pred_pridict2"] = hek_scores[i]
+            res_df.loc[orig_idx, "pred_pridict2_k562"] = k562_scores[i]
             res_df.loc[orig_idx, "status_pridict2"] = "Success"
 
     print("  PRIDICT2 scoring complete for all eligible rows.")
@@ -278,7 +286,8 @@ def main():
         "INDEX", "Group", "Edit type", "Edit position", "Edit length",
         "length difference", "PBS length", "RTT length", "RHA_len",
         "Guide sequence ((G/g)N19)", "target 20bp", "PAM", "RTT", "PBS",
-        "pred_dp_base", "pred_dp6_drnaseh", "pred_dp6_pe6a", "pred_dp6_pe6b", "pred_dp6_pe6c", "pred_pridict2",
+        "pred_dp_base", "pred_dp6_drnaseh", "pred_dp6_pe6a", "pred_dp6_pe6b", "pred_dp6_pe6c",
+        "pred_pridict2", "pred_pridict2_k562",
         "prediction_status", "failure_reason", "status_deepprime", "status_pridict2",
         "74bp wide target", col_unedited, col_edited
     ]
@@ -315,6 +324,7 @@ def main():
             "dp6_pe6c_mean": float(sub["pred_dp6_pe6c"].dropna().mean()) if sub["pred_dp6_pe6c"].notna().any() else None,
             "dp6_drnaseh_mean": float(sub["pred_dp6_drnaseh"].dropna().mean()) if sub["pred_dp6_drnaseh"].notna().any() else None,
             "pridict2_mean": float(sub["pred_pridict2"].dropna().mean()) if sub["pred_pridict2"].notna().any() else None,
+            "pridict2_k562_mean": float(sub["pred_pridict2_k562"].dropna().mean()) if sub["pred_pridict2_k562"].notna().any() else None,
         }
 
     summary_file = os.path.join(plots_dir_exp, "prediction_summary.json")
@@ -326,7 +336,7 @@ def main():
     print(res_df["prediction_status"].value_counts())
 
     print("\n=== Model Prediction Means across All Scored Designs ===")
-    for col in ["pred_dp_base", "pred_dp6_drnaseh", "pred_dp6_pe6a", "pred_dp6_pe6b", "pred_dp6_pe6c", "pred_pridict2"]:
+    for col in ["pred_dp_base", "pred_dp6_drnaseh", "pred_dp6_pe6a", "pred_dp6_pe6b", "pred_dp6_pe6c", "pred_pridict2", "pred_pridict2_k562"]:
         s = res_df[col].dropna()
         print(f"  {col:18s}: Count={len(s):3d}, Mean={s.mean():6.2f}%, Median={s.median():6.2f}%, Min={s.min():6.2f}%, Max={s.max():6.2f}%")
 

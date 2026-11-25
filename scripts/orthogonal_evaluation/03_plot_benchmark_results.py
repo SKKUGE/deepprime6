@@ -85,7 +85,7 @@ def find_pred_file(dir_path, candidates):
 def run_supp_fig7_cross_inference(
     results_dir: str,
     cache_dir: str = "data/orthogonal_testset/supp_fig7_testsets",
-    excel_path: str = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S2.xlsx",
+    excel_path: str = "data/library_design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/src/Table S2.xlsx",
     force_recompute: bool = False
 ) -> pd.DataFrame:
     """
@@ -131,7 +131,7 @@ def run_supp_fig7_cross_inference(
             datasets[label] = pd.read_parquet(fpath)
         else:
             if "PE2 " in label:
-                csv_src = "data/Library design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/dst/Generalization_Test/Table_S2_1_Test_Set.csv"
+                csv_src = "data/library_design/pairwise_library_design/OnTarget/fetching_from_DPlt=3nt;6K/dst/Generalization_Test/Table_S2_1_Test_Set.csv"
                 df_src = pd.read_csv(csv_src)
             else:
                 sheet_idx = {
@@ -274,7 +274,7 @@ def main():
     ]
     model_labels = [
         "Ground Truth",
-        "DeepPrime-FT",
+        "DeepPrime (PE2)",
         "PRIDICT2.0",
         "DP6 (PE6a)",
         "DP6 (PE6b)",
@@ -307,7 +307,7 @@ def main():
     else:
         perf_records = []
         eval_models_map = [
-            ("DeepPrime-FT", "pred_dp_base"),
+            ("DeepPrime (PE2)", "pred_dp_base"),
             ("PRIDICT2.0", "pred_pridict2_hek"),
             ("DeepPrime6-pe6a", "pred_dp6_pe6a"),
             ("DeepPrime6-pe6b", "pred_dp6_pe6b"),
@@ -473,7 +473,7 @@ def main():
     fig, axes = plt.subplots(1, 2, figsize=(18, 6))
 
     eval_models = [
-        ("DeepPrime-FT", "pred_dp_base", "#3182CE", "s-"),
+        ("DeepPrime (PE2)", "pred_dp_base", "#3182CE", "s-"),
         ("PRIDICT2.0", "pred_pridict2_hek", "#319795", "^-"),
         ("DP6 (PE6a)", "pred_dp6_pe6a", "#DD6B20", "o-"),
         ("DP6 (PE6b)", "pred_dp6_pe6b", "#E53E3E", "D-"),
@@ -674,25 +674,35 @@ def main():
     print(f"  Saved: {out_supp7_png} & {out_supp7_svg}", flush=True)
 
     # -------------------------------------------------------------
-    # Mirror all figures and tables to plots_dir if specified
+    # Copy generated correlation/summary tables to panels_dir and plots_dir
     # -------------------------------------------------------------
-    if args.plots_dir and os.path.abspath(args.plots_dir) != os.path.abspath(args.panels_dir):
+    csv_files = [
+        "correlation_matrix_deepprime_spearman.csv",
+        "correlation_matrix_deepprime_pearson.csv",
+        "correlation_matrix_pridict2_spearman.csv",
+        "correlation_matrix_pridict2_pearson.csv",
+        "ground_truth_correlations_summary.csv",
+        "Supplementary_Figure_7_generalizability_heatmap.csv",
+        "Supplementary_Figure_7_all_predictions.parquet",
+    ]
+    abs_results_dir = os.path.abspath(args.results_dir)
+    abs_panels_dir = os.path.abspath(args.panels_dir)
+    target_dirs = []
+    if abs_panels_dir != abs_results_dir:
+        target_dirs.append(args.panels_dir)
+
+    if args.plots_dir and os.path.abspath(args.plots_dir) != abs_panels_dir:
         for f in generated_panels:
             shutil.copy(f, args.plots_dir)
-        csv_files = [
-            "correlation_matrix_deepprime_spearman.csv",
-            "correlation_matrix_deepprime_pearson.csv",
-            "correlation_matrix_pridict2_spearman.csv",
-            "correlation_matrix_pridict2_pearson.csv",
-            "ground_truth_correlations_summary.csv",
-            "Supplementary_Figure_7_generalizability_heatmap.csv",
-            "Supplementary_Figure_7_all_predictions.parquet",
-        ]
+        if os.path.abspath(args.plots_dir) != abs_results_dir:
+            target_dirs.append(args.plots_dir)
+        print(f"Mirrored all {len(generated_panels)} figures to: {args.plots_dir}", flush=True)
+
+    for target_dir in target_dirs:
         for cf in csv_files:
             src_cf = os.path.join(args.results_dir, cf)
             if os.path.exists(src_cf):
-                shutil.copy(src_cf, args.plots_dir)
-        print(f"Mirrored all {len(generated_panels)} figures to: {args.plots_dir}", flush=True)
+                shutil.copy(src_cf, target_dir)
 
     print(f"\n[Complete] Successfully generated all {len(generated_panels)} figure panels directly from results CSVs!", flush=True)
 

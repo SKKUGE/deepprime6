@@ -3,7 +3,7 @@
 CLI entrypoint to run canonical DeepPrime & DeepPrime6 inference on any dataset.
 
 Usage:
-    python scripts/run_inference.py --input data/rq3_test_library_dedup.parquet --output data/predictions.parquet --models all
+    python scripts/run_inference.py --input data/main_library/test_split/rq3_test_library_dedup.parquet --output data/main_library/predictions/predictions.parquet --models all
 """
 
 import os

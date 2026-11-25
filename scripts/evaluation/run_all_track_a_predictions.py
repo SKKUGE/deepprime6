@@ -4,7 +4,7 @@ Compute all model predictions on the deduplicated test set (data/rq3_test_librar
 using the canonical codebase inference engine (src.utils.inference).
 
 Models:
-1. DeepPrime-FT (Vanilla 20-model ensemble)
+1. DeepPrime (PE2, HEK293T 5-model ensemble, exp(pred) - 1)
 2. DeepPrime6-pe6a (pe6a_mainft.ckpt)
 3. DeepPrime6-pe6b (pe6b_mainft.ckpt)
 4. DeepPrime6-pe6c (pe6c_mainft.ckpt)
@@ -36,27 +36,30 @@ if PROJECT_ROOT not in sys.path:
 from src.utils.inference import run_comprehensive_inference
 
 def main():
-    test_path = "data/rq3_test_library_dedup.parquet"
+    test_path = "data/main_library/test_split/rq3_test_library_dedup.parquet"
     print(f"Loading deduplicated test set from {test_path}...", flush=True)
     df = pd.read_parquet(test_path)
     print(f"Loaded {len(df):,} test sequences.", flush=True)
 
     has_cached_pridict = False
-    if os.path.exists("data/rq3_predictions_pridict2.csv"):
-        pr_cached = pd.read_csv("data/rq3_predictions_pridict2.csv")
+    if os.path.exists("data/main_library/predictions/rq3_predictions_pridict2.csv"):
+        pr_cached = pd.read_csv("data/main_library/predictions/rq3_predictions_pridict2.csv")
         if len(pr_cached) == len(df) and pr_cached["PRIDICT2_0_editing_Score_deep_HEK"].notna().sum() == len(df):
             has_cached_pridict = True
-            print("Found complete cached PRIDICT2.0 predictions (2,325/2,325 valid) in data/rq3_predictions_pridict2.csv.", flush=True)
+            print("Found complete cached PRIDICT2.0 predictions (2,325/2,325 valid) in data/main_library/predictions/rq3_predictions_pridict2.csv.", flush=True)
 
-    # Execute inference via canonical codebase engine
+    # Execute inference via canonical codebase engine (DeepPrime PE2 base + DeepPrime6)
     scored_df = run_comprehensive_inference(
         df_or_path=df,
         include_base=True,
         include_dp6_ft=True,
         include_dp6_scratch=False,
         include_pridict2=not has_cached_pridict,
-        batch_size=2048
+        batch_size=2048,
+        base_variant="pe2",
+        exp_transform_base=True,
     )
+    if has_cached_pridict:
         cache_id = "ID" if "ID" in pr_cached.columns else "REF_ID"
         cache = pr_cached.set_index(cache_id)
         scored_ids = scored_df["ID"] if "ID" in scored_df.columns else pd.Series(scored_df.index, index=scored_df.index)
@@ -66,12 +69,14 @@ def main():
     # Save individual prediction CSVs matching Track A format
     id_col = scored_df["ID"].values if "ID" in scored_df.columns else scored_df.index.values
 
+    os.makedirs("data/main_library/predictions", exist_ok=True)
+    os.makedirs("data/main_library/test_split", exist_ok=True)
     pred_exports = {
-        "pred_dp_base": "data/rq3_predictions_dp_base.csv",
-        "pred_dp6_pe6a": "data/rq3_predictions_dp6.csv",
-        "pred_dp6_pe6b": "data/rq3_predictions_dp6_pe6b.csv",
-        "pred_dp6_pe6c": "data/rq3_predictions_dp6_pe6c.csv",
-        "pred_dp6_drnaseh": "data/rq3_predictions_dp6_drnaseh.csv",
+        "pred_dp_base": "data/main_library/predictions/rq3_predictions_dp_base.csv",
+        "pred_dp6_pe6a": "data/main_library/predictions/rq3_predictions_dp6.csv",
+        "pred_dp6_pe6b": "data/main_library/predictions/rq3_predictions_dp6_pe6b.csv",
+        "pred_dp6_pe6c": "data/main_library/predictions/rq3_predictions_dp6_pe6c.csv",
+        "pred_dp6_drnaseh": "data/main_library/predictions/rq3_predictions_dp6_drnaseh.csv",
     }
 
     for col, filepath in pred_exports.items():
@@ -89,12 +94,12 @@ def main():
             "PRIDICT2_0_editing_Score_deep_HEK": scored_df["pred_pridict2_hek"].values,
             "PRIDICT2_0_editing_Score_deep_K562": scored_df.get("pred_pridict2_k562", scored_df["pred_pridict2_hek"]).values,
         })
-        pr_export_df.to_csv("data/rq3_predictions_pridict2.csv", index=False)
-        print("Saved: data/rq3_predictions_pridict2.csv", flush=True)
+        pr_export_df.to_csv("data/main_library/predictions/rq3_predictions_pridict2.csv", index=False)
+        print("Saved: data/main_library/predictions/rq3_predictions_pridict2.csv", flush=True)
 
     # Save combined parquet
-    scored_df.to_parquet("data/rq3_test_library_with_pridict2.parquet", index=False)
-    print("Saved: data/rq3_test_library_with_pridict2.parquet", flush=True)
+    scored_df.to_parquet("data/main_library/test_split/rq3_test_library_with_pridict2.parquet", index=False)
+    print("Saved: data/main_library/test_split/rq3_test_library_with_pridict2.parquet", flush=True)
 
     print("\n--- Track A Predictions Generation Complete ---", flush=True)
 

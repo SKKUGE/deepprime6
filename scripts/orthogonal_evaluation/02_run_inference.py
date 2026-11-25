@@ -7,7 +7,7 @@ Purpose:
    - `data/orthogonal_testset/deepprime_test_filtered.csv`
    - `data/orthogonal_testset/pridict2_test_filtered.csv`
 2. Executes GPU batch inference for 6 target models:
-   - DeepPrime-base (20-model ensemble)
+   - DeepPrime (PE2, HEK293T 5-model ensemble, exp(pred) - 1)
    - PRIDICT2.0 (Official released fold 0 model)
    - DeepPrime6-pe6a (pe6a_mainft.ckpt)
    - DeepPrime6-pe6b (pe6b_mainft.ckpt)
@@ -70,20 +70,20 @@ from src.utils.inference import (
     FEATURE_RENAME_MAP,
     char_to_onehot_tensor,
     prepare_biofeatures,
-    load_deepprime_base_models,
+    load_deepprime_pe2_models,
     load_deepprime6_models,
-    predict_deepprime_base,
+    predict_deepprime_pe2,
     predict_deepprime6,
 )
 
 
 def run_deepprime_inference(seqs_wt, seqs_ed, biofeatures_df, dp_base_models, dp6_models, norm_mean_base, norm_std_base, norm_mean_pe6, norm_std_pe6, device, batch_size=4096):
-    """Runs DeepPrime-base and all DeepPrime6 models via canonical codebase inference engine."""
+    """Runs DeepPrime (PE2) and all DeepPrime6 models via canonical codebase inference engine."""
     g_batch = char_to_onehot_tensor(seqs_wt, seqs_ed, device)
     b_base = prepare_biofeatures(biofeatures_df, norm_mean_base, norm_std_base, device)
     b_pe6 = prepare_biofeatures(biofeatures_df, norm_mean_pe6, norm_std_pe6, device)
 
-    pred_base = predict_deepprime_base(dp_base_models, g_batch, b_base, batch_size=batch_size)
+    pred_base = predict_deepprime_pe2(dp_base_models, g_batch, b_base, batch_size=batch_size, exp_transform=True)
     pred_dp6 = predict_deepprime6(dp6_models, g_batch, b_pe6, batch_size=batch_size)
 
     return {
@@ -115,15 +115,12 @@ def main():
 
     # 1. Load Pretrained Weights & Checkpoints
     print("\n--- 1. Loading Pretrained Weights & Checkpoints ---", flush=True)
-    norm_mean_base = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/mean.csv", index_col=0, header=None).squeeze()
-    norm_std_base = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/std.csv", index_col=0, header=None).squeeze()
+    print("  Loading DeepPrime (PE2, HEK293T) 5-model ensemble...", flush=True)
+    dp_base_models, norm_mean_base, norm_std_base = load_deepprime_pe2_models(device)
 
     ckpt_dir = "src/models/weights/DeepPrime6-weights"
     norm_mean_pe6 = pd.read_csv(os.path.join(ckpt_dir, "pe6_mean.csv"), index_col=0, header=None).squeeze()
     norm_std_pe6 = pd.read_csv(os.path.join(ckpt_dir, "pe6_std.csv"), index_col=0, header=None).squeeze()
-
-    print("  Loading DeepPrime-base 20-model ensemble...", flush=True)
-    dp_base_models = load_deepprime_base_models("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428", device)
 
     print("  Loading DeepPrime6 4 checkpoints...", flush=True)
     dp6_models = load_deepprime6_models(ckpt_dir, device, is_scratch=False)
@@ -350,7 +347,7 @@ def main():
     # ---------------------------------------------------------
     print("\n--- 4. Computing Metrics on Strictly Unseen Filtered Datasets ---", flush=True)
     models_to_eval = [
-        ("DeepPrime-FT", "pred_dp_base"),
+        ("DeepPrime (PE2)", "pred_dp_base"),
         ("PRIDICT2.0", "pred_pridict2_hek"),
         ("DeepPrime6-pe6a", "pred_dp6_pe6a"),
         ("DeepPrime6-pe6b", "pred_dp6_pe6b"),
@@ -392,8 +389,9 @@ def main():
     pr_perf_df = pd.DataFrame(pr_perf_rows)
     pr_perf_df.to_csv(os.path.join(OUTPUT_DIR, "pridict2_test_performance.csv"), index=False)
 
-    # Combined Performance Summary for plots directory
+    # Combined Performance Summary for results and plots directories
     perf_summary_combined = pd.concat([dp_perf_df, pr_perf_df], ignore_index=True)
+    perf_summary_combined.to_csv(os.path.join(OUTPUT_DIR, "performance_summary.csv"), index=False)
     perf_summary_combined.to_csv(os.path.join(PLOTS_DIR, "performance_summary.csv"), index=False)
 
     # Print Results

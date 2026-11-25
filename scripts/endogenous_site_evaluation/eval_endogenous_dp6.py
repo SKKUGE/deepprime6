@@ -19,15 +19,17 @@ if PROJECT_ROOT not in sys.path:
 from src.utils.inference import (
     char_to_onehot_tensor,
     prepare_biofeatures,
+    load_deepprime_pe2_models,
     load_deepprime6_models,
+    predict_deepprime_pe2,
     predict_deepprime6,
 )
 
 from Bio.Seq import reverse_complement
 from src.data.components.pe6_preprocess_data import preprocess_data
 
-excel_df = pd.read_excel('data/endogenous_ground_truth/PE_efficiency_cleanonly_NCcorrected_n32.xlsx', sheet_name='Final_n32_NCcorrected')
-pq_df = pd.read_parquet('data/full_output/final_candidates_validated.parquet')
+excel_df = pd.read_excel('data/endogenous_pipeline/ground_truth/PE_efficiency_cleanonly_NCcorrected_n32.xlsx', sheet_name='Final_n32_NCcorrected')
+pq_df = pd.read_parquet('data/endogenous_pipeline/full_output/final_candidates_validated.parquet')
 pq_df['target_num'] = range(1, len(pq_df) + 1)
 merged_cand = pd.merge(
     excel_df,
@@ -72,6 +74,10 @@ g_tensor = char_to_onehot_tensor(
 )
 b_tensor = prepare_biofeatures(bio_matched, 'pe6', device=device)
 
+pe2_models, mean_pe2, std_pe2 = load_deepprime_pe2_models(device=device)
+b_pe2 = prepare_biofeatures(bio_matched, mean_pe2, std_pe2, device=device)
+dp_pe2_preds = predict_deepprime_pe2(pe2_models, g_tensor, b_pe2, exp_transform=True)
+
 dp6_models = load_deepprime6_models(device=device, is_scratch=False)
 dp6_raw_preds = predict_deepprime6(dp6_models, g_tensor, b_tensor)
 
@@ -87,23 +93,25 @@ for sys_name in ['6a', '6b', '6c', 'dRN']:
     out = new_preds[sys_name]
     r_new, p_new = spearmanr(out, bio_matched[f'{sys_name}_NCcorr_%'])
     r_pri, _ = spearmanr(bio_matched['pred_pridict2'], bio_matched[f'{sys_name}_NCcorr_%'])
-    print(f'System {sys_name:4s}: DeepPrime6 R={r_new:.4f} (p={p_new:.4f}) | PRIDICT2 R={r_pri:.4f}')
+    r_pe2, _ = spearmanr(dp_pe2_preds, bio_matched[f'{sys_name}_NCcorr_%'])
+    print(f'System {sys_name:4s}: DeepPrime6 R={r_new:.4f} (p={p_new:.4f}) | DeepPrime (PE2) R={r_pe2:.4f} | PRIDICT2 R={r_pri:.4f}')
 
 avg_new = (new_preds['6a'] + new_preds['6b'] + new_preds['6c'] + new_preds['dRN']) / 4.0
 r_avg_new, p_avg_new = spearmanr(avg_new, bio_matched['overall_avg_NCcorr_%'])
 r_avg_pri, _ = spearmanr(bio_matched['pred_pridict2'], bio_matched['overall_avg_NCcorr_%'])
-print(f'Overall Avg: DeepPrime6 R={r_avg_new:.4f} (p={p_avg_new:.4f}) | PRIDICT2 R={r_avg_pri:.4f}')
+r_avg_pe2, _ = spearmanr(dp_pe2_preds, bio_matched['overall_avg_NCcorr_%'])
+print(f'Overall Avg: DeepPrime6 R={r_avg_new:.4f} (p={p_avg_new:.4f}) | DeepPrime (PE2) R={r_avg_pe2:.4f} | PRIDICT2 R={r_avg_pri:.4f}')
 
 # Ensemble comparison
-r_ens_new, p_ens_new = spearmanr(bio_matched['pred_dp_base'].rank() + pd.Series(avg_new).rank() + bio_matched['pred_pridict2'].rank(), bio_matched['overall_avg_NCcorr_%'])
-print(f'DeepPrime6 Ensemble (DeepPrime-FT + DeepPrime6 + PRIDICT2): Spearman R={r_ens_new:.4f} (p={p_ens_new:.6f})')
+r_ens_new, p_ens_new = spearmanr(pd.Series(dp_pe2_preds).rank() + pd.Series(avg_new).rank() + bio_matched['pred_pridict2'].rank(), bio_matched['overall_avg_NCcorr_%'])
+print(f'DeepPrime6 Ensemble (DeepPrime (PE2) + DeepPrime6 + PRIDICT2): Spearman R={r_ens_new:.4f} (p={p_ens_new:.6f})')
 
 # Disagreement subset
 dis_mask = bio_matched['Disagreement_Subcategory'] == 'Disagreement'
 r_dis_new, _ = spearmanr(avg_new[dis_mask], bio_matched.loc[dis_mask, 'overall_avg_NCcorr_%'])
 r_dis_pri, _ = spearmanr(bio_matched.loc[dis_mask, 'pred_pridict2'], bio_matched.loc[dis_mask, 'overall_avg_NCcorr_%'])
-r_dis_dp, _ = spearmanr(bio_matched.loc[dis_mask, 'pred_dp_base'], bio_matched.loc[dis_mask, 'overall_avg_NCcorr_%'])
+r_dis_dp, _ = spearmanr(dp_pe2_preds[dis_mask], bio_matched.loc[dis_mask, 'overall_avg_NCcorr_%'])
 print(f'\nDisagreement Subset (N={dis_mask.sum()}):')
-print(f'  DeepPrime-FT: R={r_dis_dp:.4f}')
-print(f'  PRIDICT2:     R={r_dis_pri:.4f}')
-print(f'  DeepPrime6:   R={r_dis_new:.4f}')
+print(f'  DeepPrime (PE2): R={r_dis_dp:.4f}')
+print(f'  PRIDICT2:        R={r_dis_pri:.4f}')
+print(f'  DeepPrime6:      R={r_dis_new:.4f}')

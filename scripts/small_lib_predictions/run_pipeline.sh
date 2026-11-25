@@ -17,7 +17,7 @@ if [ -z "${REPO_ROOT:-}" ]; then
     REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 fi
 
-OUT_DIR="${REPO_ROOT}/data/frt-library-prediction"
+OUT_DIR="${REPO_ROOT}/data/small_library/frt"
 PLOTS_DIR="${REPO_ROOT}/notebooks/plots/frt_small_library"
 cd "${REPO_ROOT}"
 

@@ -475,7 +475,7 @@ def extract_single_pegRNA_features(dfrow, editor='PE2-NGG'):
 
 def main():
     print("Loading test library...")
-    df = pd.read_parquet("data/rq3_test_library.parquet")
+    df = pd.read_parquet("data/main_library/test_split/rq3_test_library.parquet")
     print(f"Loaded {len(df)} sequences.")
 
     print("Loading PRIDICT2.0 trained models...")
@@ -527,10 +527,11 @@ def main():
     if 'sequence_name' in output_df.columns:
         output_df = output_df.drop(columns=['sequence_name'])
 
-    os.makedirs("data", exist_ok=True)
-    output_df.to_parquet("data/rq3_test_library_with_pridict2.parquet")
-    output_df.to_csv("data/rq3_predictions_pridict2.csv", index=False)
-    print("Saved PRIDICT2.0 predictions to data/rq3_predictions_pridict2.csv")
+    os.makedirs("data/main_library/test_split", exist_ok=True)
+    os.makedirs("data/main_library/predictions", exist_ok=True)
+    output_df.to_parquet("data/main_library/test_split/rq3_test_library_with_pridict2.parquet")
+    output_df.to_csv("data/main_library/predictions/rq3_predictions_pridict2.csv", index=False)
+    print("Saved PRIDICT2.0 predictions to data/main_library/predictions/rq3_predictions_pridict2.csv")
 
 if __name__ == "__main__":
     main()

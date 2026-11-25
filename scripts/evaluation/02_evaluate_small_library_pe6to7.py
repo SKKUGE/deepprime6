@@ -5,18 +5,18 @@ Comprehensive evaluation script for Small Library PE6 and PE7 generalization.
 
 Evaluates:
 - Small Library dataset (pe6to7_with_avgs.parquet, N=1,960)
-- DeepPrime-FT (20-model ensemble)
+- DeepPrime (PE2, HEK293T 5-model ensemble, exp(pred) - 1)
 - PRIDICT2.0 (HEK293T) predictions
 - DeepPrime6 (PEmaxdRNaseH, PE6a, PE6b, PE6c) with canonical fine-tuned weights
 - Ground truth across PE6 systems (PE6-2, PE6-3, PE6-4) and PE7 systems (PE7-2, PE7-3, PE7-4)
 - Replicate-level metrics (rep1, rep2, rep3) and 3-rep averages (avg)
 
 Produces:
-- Predictions CSV: predictions/small_library_pe6to7_predictions.csv (with DeepPrime-FT, PRIDICT2.0, DeepPrime6)
+- Predictions CSV: predictions/small_library_pe6to7_predictions.csv (with DeepPrime (PE2), PRIDICT2.0, DeepPrime6)
 - Summary metrics CSV: results/small_library_pe6to7_summary.csv
 - Replicate metrics CSV: results/small_library_pe6to7_replicates.csv
 - 6-panel orthogonal correlation plot (PNG & SVG)
-- Bar plots comparing DeepPrime-FT, PRIDICT2.0, and DeepPrime6 (Pearson & Spearman) (PNG & SVG)
+- Bar plots comparing DeepPrime (PE2), PRIDICT2.0, and DeepPrime6 (Pearson & Spearman) (PNG & SVG)
 """
 
 import os
@@ -51,9 +51,9 @@ from src.data.components.pe6_preprocess_data import preprocess_data
 from src.utils.inference import (
     char_to_onehot_tensor,
     prepare_biofeatures,
-    load_deepprime_base_models,
+    load_deepprime_pe2_models,
     load_deepprime6_models,
-    predict_deepprime_base,
+    predict_deepprime_pe2,
     predict_deepprime6,
     FEATURE_NAMES,
     FEATURE_RENAME_MAP,
@@ -229,9 +229,8 @@ def main():
             df[f"{raw_pfx}avg"] = df[f"{proc_pfx}-avg"]
     df.to_parquet(processed_cache, index=False)
 
-    # 1. Base normalization for DeepPrime-base
-    norm_mean_base = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/mean.csv", index_col=0, header=None).squeeze()
-    norm_std_base = pd.read_csv("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428/std.csv", index_col=0, header=None).squeeze()
+    # 1. Canonical DeepPrime (PE2, HEK293T) 5-model ensemble & normalization
+    dp_base_models, norm_mean_base, norm_std_base = load_deepprime_pe2_models(device)
 
     # 2. Canonical PE6 normalization for DeepPrime6 checkpoints
     pe6_ckpt_dir = "src/models/weights/DeepPrime6-weights"
@@ -245,13 +244,12 @@ def main():
     ed_seqs = df["Masked_EditSeq"].tolist() if "Masked_EditSeq" in df.columns else wt_seqs
     g_batch = char_to_onehot_tensor(wt_seqs, ed_seqs, device)
 
-    # Load models via canonical engine
-    dp_base_models = load_deepprime_base_models("src/models/weights/DP_variant_293T_PE2max_epegRNA_Opti_220428", device)
+    # Load DeepPrime6 models via canonical engine
     ckpt_dir = "src/models/weights/DeepPrime6-weights"
     dp6_models = load_deepprime6_models(ckpt_dir, device, is_scratch=False)
 
-    print("Running forward passes for DeepPrime-base and DeepPrime6 via canonical engine...", flush=True)
-    preds_dp_base = predict_deepprime_base(dp_base_models, g_batch, b_tensor_base, batch_size=2048)
+    print("Running forward passes for DeepPrime (PE2) and DeepPrime6 via canonical engine...", flush=True)
+    preds_dp_base = predict_deepprime_pe2(dp_base_models, g_batch, b_tensor_base, batch_size=2048, exp_transform=True)
     preds_dp6 = predict_deepprime6(dp6_models, g_batch, b_tensor_pe6, batch_size=2048)
 
     preds_dp6["PEmaxdRNaseH"] = preds_dp6["drnaseh"]
@@ -309,22 +307,22 @@ def main():
             results.append({
                 "Evaluation Target": test_label,
                 "Model Evaluated": f"DeepPrime6-{model_key}",
-                "DeepPrime-FT (Pearson r)": round(r_base, 4),
-                "DeepPrime-FT (Spearman rho)": round(rho_base, 4),
-                "DeepPrime-FT (MSE)": round(mse_base, 4),
+                "DeepPrime (PE2) (Pearson r)": round(r_base, 4),
+                "DeepPrime (PE2) (Spearman rho)": round(rho_base, 4),
+                "DeepPrime (PE2) (MSE)": round(mse_base, 4),
                 "PRIDICT2.0 (Pearson r)": round(r_pri, 4),
                 "PRIDICT2.0 (Spearman rho)": round(rho_pri, 4),
                 "PRIDICT2.0 (MSE)": round(mse_pri, 4),
                 "DeepPrime6 (Pearson r)": round(r_dp6, 4),
                 "DeepPrime6 (Spearman rho)": round(rho_dp6, 4),
                 "DeepPrime6 (MSE)": round(mse_dp6, 4),
-                "Delta Pearson r (vs FT)": round(r_dp6 - r_base, 4),
-                "Delta Spearman rho (vs FT)": round(rho_dp6 - rho_base, 4),
+                "Delta Pearson r (vs PE2)": round(r_dp6 - r_base, 4),
+                "Delta Spearman rho (vs PE2)": round(rho_dp6 - rho_base, 4),
                 "Delta Pearson r (vs PRIDICT2)": round(r_dp6 - r_pri, 4),
                 "Delta Spearman rho (vs PRIDICT2)": round(rho_dp6 - rho_pri, 4),
                 "95% CI Pearson r": f"[{ci_r_dp6[0]:.4f}, {ci_r_dp6[1]:.4f}]",
                 "95% CI Spearman rho": f"[{ci_rho_dp6[0]:.4f}, {ci_rho_dp6[1]:.4f}]",
-                "N (Valid FT/DP6)": n_base,
+                "N (Valid PE2/DP6)": n_base,
                 "N (Valid PRIDICT2)": n_pri,
             })
 
@@ -365,15 +363,15 @@ def main():
                     "Replicate": rep,
                     "Target Column": col,
                     "Model": f"DeepPrime6-{model_key}",
-                    "DeepPrime-FT (Pearson r)": round(r_base, 4),
-                    "DeepPrime-FT (Spearman rho)": round(rho_base, 4),
+                    "DeepPrime (PE2) (Pearson r)": round(r_base, 4),
+                    "DeepPrime (PE2) (Spearman rho)": round(rho_base, 4),
                     "PRIDICT2.0 (Pearson r)": round(r_pri, 4),
                     "PRIDICT2.0 (Spearman rho)": round(rho_pri, 4),
                     "DeepPrime6 (Pearson r)": round(r_dp6, 4),
                     "DeepPrime6 (Spearman rho)": round(rho_dp6, 4),
-                    "Delta Pearson r (DP6 vs FT)": round(r_dp6 - r_base, 4),
-                    "Delta Spearman rho (DP6 vs FT)": round(rho_dp6 - rho_base, 4),
-                    "N (FT/DP6)": n_b,
+                    "Delta Pearson r (DP6 vs PE2)": round(r_dp6 - r_base, 4),
+                    "Delta Spearman rho (DP6 vs PE2)": round(rho_dp6 - rho_base, 4),
+                    "N (PE2/DP6)": n_b,
                     "N (PRIDICT2)": n_p,
                 })
     df_reps = pd.DataFrame(reps_results)
@@ -415,11 +413,11 @@ def main():
     plt.savefig("notebooks/plots/Small_library_orthogonal_benchmark.svg", format="svg", bbox_inches="tight")
     plt.close()
 
-    # 2. Spearman Comparison Bar Plot (3-Model: DeepPrime-base vs PRIDICT2.0 vs DeepPrime6)
+    # 2. Spearman Comparison Bar Plot (3-Model: DeepPrime (PE2) vs PRIDICT2.0 vs DeepPrime6)
     x = np.arange(len(df_res))
     width = 0.26
     fig, ax = plt.subplots(figsize=(11, 5.8), dpi=300)
-    bars1 = ax.bar(x - width, df_res["DeepPrime-FT (Spearman rho)"], width, label="DeepPrime-FT", color="#7f8c8d", alpha=0.85, edgecolor="black")
+    bars1 = ax.bar(x - width, df_res["DeepPrime (PE2) (Spearman rho)"], width, label="DeepPrime (PE2)", color="#7f8c8d", alpha=0.85, edgecolor="black")
     bars2 = ax.bar(x, df_res["PRIDICT2.0 (Spearman rho)"], width, label="PRIDICT2.0", color="#8DD3C7", alpha=0.9, edgecolor="black")
     bars3 = ax.bar(x + width, df_res["DeepPrime6 (Spearman rho)"], width, label="DeepPrime6 (Fine-Tuned)", color="#2980b9", alpha=0.9, edgecolor="black")
 
@@ -437,7 +435,7 @@ def main():
                     textcoords="offset points", ha="center", va="bottom", fontsize=8.5, weight="bold")
 
     ax.set_ylabel("Spearman Correlation ($\\rho$)", fontsize=13, weight="bold")
-    ax.set_title("Rank Accuracy: DeepPrime-FT vs PRIDICT2.0 vs DeepPrime6 on Small Library", fontsize=14, weight="bold", pad=12)
+    ax.set_title("Rank Accuracy: DeepPrime (PE2) vs PRIDICT2.0 vs DeepPrime6 on Small Library", fontsize=14, weight="bold", pad=12)
     ax.set_xticks(x)
     ax.set_xticklabels([t.replace(" (", "\n(") for t in df_res["Evaluation Target"]], fontsize=11)
     ax.set_ylim(0, 0.88)
@@ -453,9 +451,9 @@ def main():
     plt.savefig("figures/evaluation/Small_library_spearman_gain_bars.svg", format="svg", bbox_inches="tight")
     plt.close()
 
-    # 3. Pearson Quantitative Comparison Bar Plot (3-Model: DeepPrime-FT vs PRIDICT2.0 vs DeepPrime6)
+    # 3. Pearson Quantitative Comparison Bar Plot (3-Model: DeepPrime (PE2) vs PRIDICT2.0 vs DeepPrime6)
     fig, ax = plt.subplots(figsize=(11, 5.8), dpi=300)
-    bars_p1 = ax.bar(x - width, df_res["DeepPrime-FT (Pearson r)"], width, label="DeepPrime-FT", color="#7f8c8d", alpha=0.85, edgecolor="black")
+    bars_p1 = ax.bar(x - width, df_res["DeepPrime (PE2) (Pearson r)"], width, label="DeepPrime (PE2)", color="#7f8c8d", alpha=0.85, edgecolor="black")
     bars_p2 = ax.bar(x, df_res["PRIDICT2.0 (Pearson r)"], width, label="PRIDICT2.0", color="#8DD3C7", alpha=0.9, edgecolor="black")
     bars_p3 = ax.bar(x + width, df_res["DeepPrime6 (Pearson r)"], width, label="DeepPrime6 (Fine-Tuned)", color="#d35400", alpha=0.9, edgecolor="black")
 
@@ -475,7 +473,7 @@ def main():
                     ha="center", va="bottom", fontsize=8, color="#b03a2e", weight="bold")
 
     ax.set_ylabel("Pearson Correlation ($r$)", fontsize=13, weight="bold")
-    ax.set_title("Quantitative Linear Accuracy: DeepPrime-FT vs PRIDICT2.0 vs DeepPrime6 on Small Library", fontsize=14, weight="bold", pad=12)
+    ax.set_title("Quantitative Linear Accuracy: DeepPrime (PE2) vs PRIDICT2.0 vs DeepPrime6 on Small Library", fontsize=14, weight="bold", pad=12)
     ax.set_xticks(x)
     ax.set_xticklabels([t.replace(" (", "\n(") for t in df_res["Evaluation Target"]], fontsize=11)
     ax.set_ylim(0, 0.98)
@@ -495,13 +493,13 @@ def main():
     fig, (ax_r, ax_rho) = plt.subplots(1, 2, figsize=(20, 6.0), dpi=300)
 
     # Panel A: Pearson
-    ax_r.bar(x - width, df_res["DeepPrime-FT (Pearson r)"], width, label="DeepPrime-FT", color="#7f8c8d", alpha=0.85, edgecolor="black")
+    ax_r.bar(x - width, df_res["DeepPrime (PE2) (Pearson r)"], width, label="DeepPrime (PE2)", color="#7f8c8d", alpha=0.85, edgecolor="black")
     ax_r.bar(x, df_res["PRIDICT2.0 (Pearson r)"], width, label="PRIDICT2.0", color="#8DD3C7", alpha=0.9, edgecolor="black")
     ax_r.bar(x + width, df_res["DeepPrime6 (Pearson r)"], width, label="DeepPrime6", color="#d35400", alpha=0.9, edgecolor="black")
 
     for idx, row in df_res.iterrows():
-        delta = row["Delta Pearson r (vs FT)"]
-        ax_r.annotate(f"{row['DeepPrime-FT (Pearson r)']:.3f}", xy=(x[idx] - width, row["DeepPrime-FT (Pearson r)"] + 0.01),
+        delta = row["Delta Pearson r (vs PE2)"]
+        ax_r.annotate(f"{row['DeepPrime (PE2) (Pearson r)']:.3f}", xy=(x[idx] - width, row["DeepPrime (PE2) (Pearson r)"] + 0.01),
                       ha="center", va="bottom", fontsize=8)
         ax_r.annotate(f"{row['PRIDICT2.0 (Pearson r)']:.3f}", xy=(x[idx], row["PRIDICT2.0 (Pearson r)"] + 0.01),
                       ha="center", va="bottom", fontsize=8)
@@ -519,15 +517,15 @@ def main():
     sns.despine(ax=ax_r)
 
     # Panel B: Spearman
-    ax_rho.bar(x - width, df_res["DeepPrime-FT (Spearman rho)"], width, label="DeepPrime-FT", color="#7f8c8d", alpha=0.85, edgecolor="black")
+    ax_rho.bar(x - width, df_res["DeepPrime (PE2) (Spearman rho)"], width, label="DeepPrime (PE2)", color="#7f8c8d", alpha=0.85, edgecolor="black")
     ax_rho.bar(x, df_res["PRIDICT2.0 (Spearman rho)"], width, label="PRIDICT2.0", color="#8DD3C7", alpha=0.9, edgecolor="black")
     ax_rho.bar(x + width, df_res["DeepPrime6 (Spearman rho)"], width, label="DeepPrime6", color="#2980b9", alpha=0.9, edgecolor="black")
 
     for idx, row in df_res.iterrows():
-        delta = row["Delta Spearman rho (vs FT)"]
+        delta = row["Delta Spearman rho (vs PE2)"]
         sign = "+" if delta >= 0 else ""
         color = "#1f618d" if delta >= 0 else "#555555"
-        ax_rho.annotate(f"{row['DeepPrime-FT (Spearman rho)']:.3f}", xy=(x[idx] - width, row["DeepPrime-FT (Spearman rho)"] + 0.01),
+        ax_rho.annotate(f"{row['DeepPrime (PE2) (Spearman rho)']:.3f}", xy=(x[idx] - width, row["DeepPrime (PE2) (Spearman rho)"] + 0.01),
                         ha="center", va="bottom", fontsize=8)
         ax_rho.annotate(f"{row['PRIDICT2.0 (Spearman rho)']:.3f}", xy=(x[idx], row["PRIDICT2.0 (Spearman rho)"] + 0.01),
                         ha="center", va="bottom", fontsize=8)
@@ -544,7 +542,7 @@ def main():
     ax_rho.legend(frameon=True, fontsize=10.5, loc="upper right")
     sns.despine(ax=ax_rho)
 
-    plt.suptitle("Small Library Generalization: DeepPrime-FT vs PRIDICT2.0 vs DeepPrime6 Across PE6 & PE7 Systems", fontsize=16, weight="bold", y=1.02)
+    plt.suptitle("Small Library Generalization: DeepPrime (PE2) vs PRIDICT2.0 vs DeepPrime6 Across PE6 & PE7 Systems", fontsize=16, weight="bold", y=1.02)
     plt.tight_layout()
 
     dual_png = os.path.join(figures_dir, "Small_library_dual_metric_bars.png")

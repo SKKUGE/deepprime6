@@ -282,6 +282,30 @@ def load_deepprime_base_models(
     return models
 
 
+def load_deepprime_pe2_models(
+    device: Optional[torch.device] = None
+) -> Tuple[List[GeneInteractionModelVanilla], pd.Series, pd.Series]:
+    """Loads the 5-model DeepPrime base (PE2, HEK293T) ensemble and its normalization stats."""
+    from genet.models import LoadModel
+
+    if device is None:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    mdir = LoadModel("DeepPrime", "PE2", "HEK293T").model_dir
+    mean_s = (
+        pd.read_csv(os.path.join(mdir, "mean_231124.csv"), header=None, index_col=0)
+        .squeeze()
+        .rename(index=FEATURE_RENAME_MAP)
+    )
+    std_s = (
+        pd.read_csv(os.path.join(mdir, "std_231124.csv"), header=None, index_col=0)
+        .squeeze()
+        .rename(index=FEATURE_RENAME_MAP)
+    )
+    models = load_deepprime_base_models(weights_dir=mdir, device=device)
+    return models, mean_s, std_s
+
+
 def load_deepprime6_models(
     weights_dir: Optional[str] = None,
     device: Optional[torch.device] = None,
@@ -332,6 +356,20 @@ def predict_deepprime_base(
             batch_pred = torch.stack([m(g_b, b_b) for m in models], dim=0).mean(dim=0)
             preds[start_idx:end_idx] = batch_pred.cpu().numpy().flatten()
     return preds
+
+
+def predict_deepprime_pe2(
+    models: List[GeneInteractionModelVanilla],
+    g_tensor: torch.Tensor,
+    b_tensor: torch.Tensor,
+    batch_size: int = 2048,
+    exp_transform: bool = True,
+) -> np.ndarray:
+    """Runs DeepPrime (PE2, HEK293T) ensemble inference and optionally converts log(1+eff) to linear %."""
+    raw_log = predict_deepprime_base(models, g_tensor, b_tensor, batch_size=batch_size).astype(np.float64)
+    if exp_transform:
+        return np.exp(raw_log) - 1.0
+    return raw_log
 
 
 def predict_deepprime6(
@@ -446,7 +484,9 @@ def run_comprehensive_inference(
     batch_size: int = 2048,
     dp_base_dir: Optional[str] = None,
     dp6_ft_dir: Optional[str] = None,
-    dp6_scratch_dir: Optional[str] = None
+    dp6_scratch_dir: Optional[str] = None,
+    base_variant: str = "pe2",
+    exp_transform_base: bool = True,
 ) -> pd.DataFrame:
     """
     Executes full multi-model inference on a given dataset.
@@ -502,12 +542,21 @@ def run_comprehensive_inference(
     norm_mean_pe6 = pd.read_csv(os.path.join(ft_dir, "pe6_mean.csv"), index_col=0, header=None).squeeze()
     norm_std_pe6 = pd.read_csv(os.path.join(ft_dir, "pe6_std.csv"), index_col=0, header=None).squeeze()
 
-    # 1. DeepPrime-base Inference
+    # 1. DeepPrime (PE2) / DeepPrime-FT Inference
     if include_base:
-        logger.info("Executing DeepPrime-base 20-ensemble inference...")
-        b_base = prepare_biofeatures(df, norm_mean_base, norm_std_base, device)
-        base_models = load_deepprime_base_models(base_dir, device)
-        df["pred_dp_base"] = predict_deepprime_base(base_models, g_tensor, b_base, batch_size=batch_size)
+        if dp_base_dir is None and base_variant.lower() in ("pe2", "deepprime", "base"):
+            logger.info("Executing DeepPrime (PE2, HEK293T) 5-ensemble inference...")
+            pe2_models, mean_pe2, std_pe2 = load_deepprime_pe2_models(device)
+            b_base = prepare_biofeatures(df, mean_pe2, std_pe2, device)
+            df["pred_dp_base"] = predict_deepprime_pe2(
+                pe2_models, g_tensor, b_base, batch_size=batch_size, exp_transform=exp_transform_base
+            )
+        else:
+            logger.info("Executing DeepPrime-FT 20-ensemble inference...")
+            b_base = prepare_biofeatures(df, norm_mean_base, norm_std_base, device)
+            base_models = load_deepprime_base_models(base_dir, device)
+            raw_ft = predict_deepprime_base(base_models, g_tensor, b_base, batch_size=batch_size)
+            df["pred_dp_base"] = (np.exp(raw_ft.astype(np.float64)) - 1.0) if exp_transform_base else raw_ft
 
     # 2. DeepPrime6 Fine-Tuning Inference
     if include_dp6_ft:
