@@ -2,7 +2,7 @@
 """
 Endogenous Sites Prime Editing Efficiency Evaluation & Ensemble Modeling Benchmark
 
-Evaluates prediction models (DeepPrime-FT, PRIDICT2.0, DeepPrime6 [4-model average & variant-matched])
+Evaluates prediction models (DP [DeepPrime original PE2], PRIDICT2.0, DP6 [4-model average])
 and their rank-averaged ensembles against measured endogenous prime editing efficiencies across 4 PE systems:
 - PEmax-dRNaseH (dRN)
 - PE6a
@@ -10,8 +10,20 @@ and their rank-averaged ensembles against measured endogenous prime editing effi
 - PE6c
 - Overall Average
 
+Heatmap & summary model order (top to bottom):
+1. DP (DeepPrime original PE2, HEK293T 5-model ensemble, exp(pred) - 1)
+2. PRIDICT2.0
+3. DP6 (average)
+4. DP + PRIDICT2.0
+5. DP + DP6
+6. PRIDICT2.0 + DP6
+7. DP + PRIDICT2.0 + DP6
+
+Primary 4-model scatter plots:
+- DP, PRIDICT2.0, DP6 (average), and DP + PRIDICT2.0 + DP6 ensemble
+
 Dataset:
-  data/endogenous_ground_truth/PE_efficiency_cleanonly_NCcorrected_n32.xlsx (N=32 clean targets)
+  data/endogenous_pipeline/ground_truth/PE_efficiency_cleanonly_NCcorrected_n32.xlsx (N=32 clean targets)
 """
 
 import os
@@ -49,16 +61,26 @@ plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['axes.edgecolor'] = '#333333'
 plt.rcParams['axes.linewidth'] = 1.0
 
+# Canonical 7-row model order for heatmaps and summary comparisons (top to bottom)
+HEATMAP_MODEL_ORDER = [
+    'DP',
+    'PRIDICT2.0',
+    'DP6 (average)',
+    'DP + PRIDICT2.0',
+    'DP + DP6',
+    'PRIDICT2.0 + DP6',
+    'DP + PRIDICT2.0 + DP6',
+]
+
 # Color palettes
 MODEL_COLORS = {
-    'DeepPrime-FT': '#3182CE',                 # Blue
-    'PRIDICT2.0': '#2A9D8F',                   # Teal/Green
-    'DeepPrime6': '#E63946',                   # Crimson (4-Model Avg)
-    'DeepPrime6 (Variant-Matched)': '#FB8500', # Amber/Orange
-    'DP + PRIDICT2.0': '#6B4C9A',              # Purple
-    'DP + DP6': '#DD6B20',                     # Orange
-    'PRIDICT2.0 + DP6': '#319795',             # Cyan
-    'DP + DP6 + PRIDICT2.0': '#C53030'          # Dark Red/Ruby
+    'DP': '#3182CE',                       # Blue (DeepPrime original PE2)
+    'PRIDICT2.0': '#2A9D8F',               # Teal/Green
+    'DP6 (average)': '#E63946',            # Crimson (4-Model Avg)
+    'DP + PRIDICT2.0': '#6B4C9A',          # Purple
+    'DP + DP6': '#DD6B20',                 # Orange
+    'PRIDICT2.0 + DP6': '#319795',         # Cyan
+    'DP + PRIDICT2.0 + DP6': '#C53030',    # Dark Red/Ruby
 }
 
 PE_SYSTEM_LABELS = {
@@ -69,31 +91,44 @@ PE_SYSTEM_LABELS = {
     'overall_avg_NCcorr_%': 'Overall Average'
 }
 
-VARIANT_MATCHED_COL_MAP = {
-    'PEmax-dRNaseH': 'pred_dp6_drnaseh',
-    'PE6a': 'pred_dp6_pe6a',
-    'PE6b': 'pred_dp6_pe6b',
-    'PE6c': 'pred_dp6_pe6c',
-    'Overall Average': 'pred_dp6',
+MODEL_ANNOTATIONS = {
+    'DP': 'DeepPrime original (HEK293T PE2)',
+    'PRIDICT2.0': 'PRIDICT2.0 (HEK293T epegRNA)',
+    'DP6 (average)': 'DeepPrime6 (4-Model Average)',
+    'DP + PRIDICT2.0 + DP6': 'Rank-Averaged Ensemble',
 }
 
-MODEL_ANNOTATIONS = {
-    'DeepPrime-FT': 'DP-FT (HEK293T PE2max epegRNA)',
-    'PRIDICT2.0': 'PRIDICT2.0 (HEK293T epegRNA)',
-    'DeepPrime6': 'DeepPrime6 (PE6-tuned Ensemble Avg)'
-}
+
+def load_genet_pe2_models(device):
+    """Loads the 5-model DeepPrime original (PE2, HEK293T) ensemble and its normalization stats."""
+    from genet.models import LoadModel
+    from src.utils.inference import FEATURE_RENAME_MAP, load_deepprime_base_models
+
+    mdir = LoadModel("DeepPrime", "PE2", "HEK293T").model_dir
+    mean_s = (
+        pd.read_csv(os.path.join(mdir, "mean_231124.csv"), header=None, index_col=0)
+        .squeeze()
+        .rename(index=FEATURE_RENAME_MAP)
+    )
+    std_s = (
+        pd.read_csv(os.path.join(mdir, "std_231124.csv"), header=None, index_col=0)
+        .squeeze()
+        .rename(index=FEATURE_RENAME_MAP)
+    )
+    models = load_deepprime_base_models(weights_dir=mdir, device=device)
+    return models, mean_s, std_s
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate endogenous PE efficiency predictions")
     parser.add_argument(
         "--excel-path",
-        default=os.path.join(PROJECT_ROOT, "data/endogenous_ground_truth/PE_efficiency_cleanonly_NCcorrected_n32.xlsx"),
+        default=os.path.join(PROJECT_ROOT, "data/endogenous_pipeline/ground_truth/PE_efficiency_cleanonly_NCcorrected_n32.xlsx"),
         help="Path to endogenous ground truth Excel file"
     )
     parser.add_argument(
         "--parquet-path",
-        default=os.path.join(PROJECT_ROOT, "data/full_output/final_candidates_validated.parquet"),
+        default=os.path.join(PROJECT_ROOT, "data/endogenous_pipeline/full_output/final_candidates_validated.parquet"),
         help="Path to full candidate sequences parquet file"
     )
     parser.add_argument(
@@ -103,15 +138,15 @@ def parse_args():
     )
     parser.add_argument(
         "--run-inference",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=True,
         help="Re-run neural network model inference from scratch for validation (default: True)"
     )
     parser.add_argument(
         "--sync-ground-truth",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=True,
-        help="Synchronize updated predictions back to data/endogenous_ground_truth/ CSV and XLSX"
+        help="Synchronize updated predictions back to data/endogenous_pipeline/ground_truth/ CSV and XLSX"
     )
     parser.add_argument(
         "--device",
@@ -206,7 +241,6 @@ def load_dataset(excel_path, parquet_path, use_codebase_inference=True, device="
         from src.utils.inference import (
             char_to_onehot_tensor,
             prepare_biofeatures,
-            load_deepprime_base_models,
             load_deepprime6_models,
             predict_deepprime_base,
             predict_deepprime6
@@ -218,13 +252,14 @@ def load_dataset(excel_path, parquet_path, use_codebase_inference=True, device="
             feat_df['Masked_EditSeq'].tolist(),
             dev
         )
-        b_base = prepare_biofeatures(feat_df, 'base', device=dev)
+        pe2_models, mean_pe2, std_pe2 = load_genet_pe2_models(device=dev)
+        b_pe2 = prepare_biofeatures(feat_df, mean_pe2, std_pe2, device=dev)
         b_pe6 = prepare_biofeatures(feat_df, 'pe6', device=dev)
 
-        base_models = load_deepprime_base_models(device=dev)
         dp6_models = load_deepprime6_models(device=dev, is_scratch=False)
 
-        live_dp_base = predict_deepprime_base(base_models, g_tensor, b_base)
+        live_dp_pe2_raw_log = predict_deepprime_base(pe2_models, g_tensor, b_pe2).astype(np.float64)
+        live_dp_pe2 = np.exp(live_dp_pe2_raw_log) - 1.0
         live_dp6_dict = predict_deepprime6(dp6_models, g_tensor, b_pe6)
         live_dp6_avg = np.mean([
             live_dp6_dict['pe6a'],
@@ -270,14 +305,15 @@ def load_dataset(excel_path, parquet_path, use_codebase_inference=True, device="
         df['Efficacy_Category'] = merged_cand['Efficacy_Category'].values
         df['Disagreement_Subcategory'] = merged_cand['Disagreement_Subcategory'].values
         df['Edit_type_resolved'] = [t.capitalize() for t in true_edit_types]
-        df['pred_dp_base'] = live_dp_base
+        df['pred_dp_pe2'] = live_dp_pe2
+        df['pred_dp_pe2_raw_log'] = live_dp_pe2_raw_log
         df['pred_dp6'] = live_dp6_avg
         df['pred_pridict2'] = live_pridict2
         df['pred_dp6_pe6a'] = live_dp6_dict['pe6a']
         df['pred_dp6_pe6b'] = live_dp6_dict['pe6b']
         df['pred_dp6_pe6c'] = live_dp6_dict['pe6c']
         df['pred_dp6_drnaseh'] = live_dp6_dict['drnaseh']
-        print("  [SUCCESS] All predictions updated via canonical inference engine.")
+        print("  [SUCCESS] All predictions updated via canonical inference engine (DP original PE2, PRIDICT2.0, DeepPrime6).")
 
         # Synchronize updated scores back to ground truth CSV and XLSX
         if sync_gt:
@@ -285,7 +321,7 @@ def load_dataset(excel_path, parquet_path, use_codebase_inference=True, device="
                 'target_num', 'Locus', 'Mutation',
                 'dRN_NCcorr_%', '6a_NCcorr_%', '6b_NCcorr_%', '6c_NCcorr_%', 'overall_avg_NCcorr_%',
                 'NC_background_%', 'dRN_raw_%', '6a_raw_%', '6b_raw_%', '6c_raw_%', 'overall_avg_raw_%',
-                'pred_dp_base', 'pred_dp6', 'pred_pridict2',
+                'pred_dp_pe2', 'pred_dp_pe2_raw_log', 'pred_dp_base', 'pred_dp6', 'pred_pridict2',
                 'pred_dp6_pe6a', 'pred_dp6_pe6b', 'pred_dp6_pe6c', 'pred_dp6_drnaseh'
             ]
             gt_sync_df = df[[c for c in gt_cols if c in df.columns]].copy()
@@ -310,8 +346,8 @@ def compute_rank_ensembles(df):
     """
     df_calc = df.copy()
 
-    # Model scores
-    df_calc['score_dp'] = df_calc['pred_dp_base']
+    # Model scores (DP = DeepPrime original PE2 in linear % scale)
+    df_calc['score_dp'] = df_calc['pred_dp_pe2']
     df_calc['score_pri'] = df_calc['pred_pridict2']
     df_calc['score_dp6'] = df_calc['pred_dp6']
 
@@ -324,7 +360,7 @@ def compute_rank_ensembles(df):
     df_calc['rank_ens_dp_pri'] = (df_calc['rank_dp'] + df_calc['rank_pri']) / 2.0
     df_calc['rank_ens_dp_dp6'] = (df_calc['rank_dp'] + df_calc['rank_dp6']) / 2.0
     df_calc['rank_ens_pri_dp6'] = (df_calc['rank_pri'] + df_calc['rank_dp6']) / 2.0
-    df_calc['rank_ens_all3'] = (df_calc['rank_dp'] + df_calc['rank_dp6'] + df_calc['rank_pri']) / 3.0
+    df_calc['rank_ens_all3'] = (df_calc['rank_dp'] + df_calc['rank_pri'] + df_calc['rank_dp6']) / 3.0
 
     return df_calc
 
@@ -334,12 +370,12 @@ def run_inference_validation(df_endogenous):
     Validates that model predictions are non-trivial and properly distributed.
     """
     print(f"\n[Validation] Validating model predictions...")
-    assert df_endogenous['pred_dp_base'].notna().all(), "Missing DeepPrime-Base predictions!"
+    assert df_endogenous['pred_dp_pe2'].notna().all(), "Missing DeepPrime original (PE2) predictions!"
     assert df_endogenous['pred_dp6'].notna().all(), "Missing DeepPrime6 predictions!"
     assert df_endogenous['pred_pridict2'].notna().all(), "Missing PRIDICT2 predictions!"
-    print(f"  - DeepPrime-FT: N={len(df_endogenous)}, Mean={df_endogenous['pred_dp_base'].mean():.2f}%")
-    print(f"  - DeepPrime6:   N={len(df_endogenous)}, Mean={df_endogenous['pred_dp6'].mean():.2f}%")
-    print(f"  - PRIDICT2.0:   N={len(df_endogenous)}, Mean={df_endogenous['pred_pridict2'].mean():.2f}%")
+    print(f"  - DP (PE2):      N={len(df_endogenous)}, Mean={df_endogenous['pred_dp_pe2'].mean():.2f}%")
+    print(f"  - PRIDICT2.0:    N={len(df_endogenous)}, Mean={df_endogenous['pred_pridict2'].mean():.2f}%")
+    print(f"  - DP6 (average): N={len(df_endogenous)}, Mean={df_endogenous['pred_dp6'].mean():.2f}%")
     print("  [PASS] All prediction scores are validated.")
 
 
@@ -357,17 +393,16 @@ def calculate_metrics_summary(df, cohort_name="Full Cohort (N=32)"):
     ]
 
     single_models = [
-        ('DeepPrime-FT', 'pred_dp_base', 'Score'),
+        ('DP', 'pred_dp_pe2', 'Score'),
         ('PRIDICT2.0', 'pred_pridict2', 'Score'),
-        ('DeepPrime6', 'pred_dp6', 'Score'),
-        ('DeepPrime6 (Variant-Matched)', None, 'Score'),
+        ('DP6 (average)', 'pred_dp6', 'Score'),
     ]
 
     ensembles = [
         ('DP + PRIDICT2.0', 'rank_ens_dp_pri', 'Rank Average'),
         ('DP + DP6', 'rank_ens_dp_dp6', 'Rank Average'),
         ('PRIDICT2.0 + DP6', 'rank_ens_pri_dp6', 'Rank Average'),
-        ('DP + DP6 + PRIDICT2.0', 'rank_ens_all3', 'Rank Average'),
+        ('DP + PRIDICT2.0 + DP6', 'rank_ens_all3', 'Rank Average'),
     ]
 
     records = []
@@ -376,11 +411,10 @@ def calculate_metrics_summary(df, cohort_name="Full Cohort (N=32)"):
     # 1. Single models
     for pe_name, pe_col in pe_systems:
         for m_name, col_name, pred_type in single_models:
-            actual_col = VARIANT_MATCHED_COL_MAP[pe_name] if col_name is None else col_name
-            if actual_col not in df_ranked.columns:
+            if col_name not in df_ranked.columns:
                 continue
-            sp_r, sp_p = spearmanr(df_ranked[actual_col], df_ranked[pe_col])
-            pe_r, pe_p = pearsonr(df_ranked[actual_col], df_ranked[pe_col])
+            sp_r, sp_p = spearmanr(df_ranked[col_name], df_ranked[pe_col])
+            pe_r, pe_p = pearsonr(df_ranked[col_name], df_ranked[pe_col])
             records.append({
                 'Cohort': cohort_name,
                 'Category': 'Single Model',
@@ -416,12 +450,22 @@ def calculate_metrics_summary(df, cohort_name="Full Cohort (N=32)"):
     return metrics_df
 
 
-def plot_fig1_single_models(df, out_dir, suffix="", title_prefix=""):
+def plot_fig1_four_model_scatters(df, out_dir, suffix="", title_prefix=""):
     """
-    Scattered dot plots for DP, PRIDICT2.0, DP6 across 4 PE types + overall average.
+    Scattered dot plots for the 4 primary models/ensemble:
+      1. DP (DeepPrime original PE2)
+      2. PRIDICT2.0
+      3. DP6 (average)
+      4. DP + PRIDICT2.0 + DP6 (rank-averaged ensemble)
+    across the 4 PE types + Overall Average.
+    Generates:
+      - Master 5x4 figure (PNG & SVG)
+      - Per-PE-system 1x4 figures (PNG & SVG)
+      - 4 standalone individual scatter plots per PE system under figures/individual_scatters/ (PNG & SVG)
     Displays BOTH Spearman R and Pearson r in every subplot annotation box.
     """
-    print(f"\n[2/5] Generating Figure 1: Single models vs measured activity (N=32)...")
+    print(f"\n[2/6] Generating Figure 1: 4-model scatter plots (DP, PRIDICT2.0, DP6, DP + PRIDICT2.0 + DP6)...")
+    df_plot = compute_rank_ensembles(df)
     pe_systems = [
         ('PEmax-dRNaseH', 'dRN_NCcorr_%'),
         ('PE6a', '6a_NCcorr_%'),
@@ -430,110 +474,110 @@ def plot_fig1_single_models(df, out_dir, suffix="", title_prefix=""):
         ('Overall Average', 'overall_avg_NCcorr_%'),
     ]
 
-    single_models = [
-        ('DeepPrime-FT', 'pred_dp_base', 'DeepPrime Prediction Score (%)', MODEL_ANNOTATIONS['DeepPrime-FT']),
-        ('PRIDICT2.0', 'pred_pridict2', 'PRIDICT2.0 Prediction Score (%)', MODEL_ANNOTATIONS['PRIDICT2.0']),
-        ('DeepPrime6', 'pred_dp6', 'DeepPrime6 Prediction Score (%)', MODEL_ANNOTATIONS['DeepPrime6']),
+    four_models = [
+        ('DP', 'pred_dp_pe2', 'DP (PE2) Prediction Score (%)', MODEL_ANNOTATIONS['DP'], 'DP'),
+        ('PRIDICT2.0', 'pred_pridict2', 'PRIDICT2.0 Prediction Score (%)', MODEL_ANNOTATIONS['PRIDICT2.0'], 'PRIDICT2.0'),
+        ('DP6 (average)', 'pred_dp6', 'DP6 (average) Prediction Score (%)', MODEL_ANNOTATIONS['DP6 (average)'], 'DP6'),
+        ('DP + PRIDICT2.0 + DP6', 'rank_ens_all3', 'Average of Rank (DP + PRIDICT2.0 + DP6)', MODEL_ANNOTATIONS['DP + PRIDICT2.0 + DP6'], 'DP_PRIDICT2.0_DP6_ensemble'),
     ]
 
-    # Combined master figure (5 rows x 3 columns)
-    fig, axes = plt.subplots(len(pe_systems), len(single_models), figsize=(15, 18.5), sharey=False)
+    def _draw_scatter_panel(ax, x_vals, y_vals, m_name, is_ensemble=False, point_size=55, font_size=8.8):
+        sp_r, sp_p = spearmanr(x_vals, y_vals)
+        pe_r, pe_p = pearsonr(x_vals, y_vals)
+
+        line_color = '#9B2C2C' if (is_ensemble or m_name == 'DP6 (average)') else '#1A365D'
+        sns.regplot(
+            x=x_vals,
+            y=y_vals,
+            ax=ax,
+            color=MODEL_COLORS[m_name],
+            scatter_kws={'alpha': 0.78, 's': point_size, 'edgecolors': 'k', 'linewidths': 0.75},
+            line_kws={'color': line_color, 'linewidth': 1.8}
+        )
+
+        stats_text = (
+            f"Spearman $R$ = {sp_r:.4f} ($P$ = {sp_p:.2e})\n"
+            f"Pearson $r$ = {pe_r:.4f} ($P$ = {pe_p:.2e})\n"
+            f"$n$ = {len(x_vals)}"
+        )
+        ax.text(
+            0.04, 0.94,
+            stats_text,
+            transform=ax.transAxes,
+            verticalalignment='top',
+            fontsize=font_size,
+            fontweight='bold' if is_ensemble else 'medium',
+            bbox=dict(
+                boxstyle='round,pad=0.35',
+                fc='#FFF5F5' if is_ensemble else '#FFFFFF',
+                ec='#FEB2B2' if is_ensemble else '#CBD5E0',
+                alpha=0.92
+            )
+        )
+        # Add top headroom so the stats annotation box never overlaps high-activity data points
+        ymin, ymax = ax.get_ylim()
+        y_data_max = float(np.nanmax(y_vals))
+        ax.set_ylim(ymin, max(ymax, y_data_max * 1.28))
+        ax.grid(True, linestyle='--', alpha=0.45)
+
+    # 1. Combined master figure (5 rows x 4 columns)
+    fig, axes = plt.subplots(len(pe_systems), len(four_models), figsize=(19.0, 18.5), sharey=False)
 
     for row_idx, (pe_name, pe_col) in enumerate(pe_systems):
-        for col_idx, (m_name, m_col, x_label, m_anno) in enumerate(single_models):
+        for col_idx, (m_name, m_col, x_label, m_anno, _) in enumerate(four_models):
             ax = axes[row_idx, col_idx]
-            x_vals = df[m_col]
-            y_vals = df[pe_col]
+            is_ens = (m_col == 'rank_ens_all3')
+            _draw_scatter_panel(ax, df_plot[m_col], df_plot[pe_col], m_name, is_ensemble=is_ens, point_size=55, font_size=8.6)
 
-            sp_r, sp_p = spearmanr(x_vals, y_vals)
-            pe_r, pe_p = pearsonr(x_vals, y_vals)
-
-            # Scatter with regression line
-            sns.regplot(
-                x=x_vals,
-                y=y_vals,
-                ax=ax,
-                color=MODEL_COLORS[m_name],
-                scatter_kws={'alpha': 0.75, 's': 55, 'edgecolors': 'k', 'linewidths': 0.7},
-                line_kws={'color': '#C53030' if m_name == 'DeepPrime6' else '#1A365D', 'linewidth': 1.8}
-            )
-
-            # Annotation box with BOTH Spearman R and Pearson r
-            stats_text = (
-                f"Spearman $R$ = {sp_r:.4f} ($P$ = {sp_p:.2e})\n"
-                f"Pearson $r$ = {pe_r:.4f} ($P$ = {pe_p:.2e})\n"
-                f"$n$ = {len(x_vals)}"
-            )
-            ax.text(
-                0.04, 0.94,
-                stats_text,
-                transform=ax.transAxes,
-                verticalalignment='top',
-                fontsize=8.8,
-                fontweight='medium',
-                bbox=dict(boxstyle='round,pad=0.35', fc='#FFFFFF', ec='#CBD5E0', alpha=0.92)
-            )
-
-            # Titles and Labels
             if row_idx == 0:
                 ax.set_title(f"{title_prefix}{m_name}\n({m_anno})", fontsize=11, fontweight='bold', pad=10)
             ax.set_xlabel(x_label if row_idx == len(pe_systems) - 1 else "", fontsize=9.5)
             ax.set_ylabel(f"{pe_name}\nMeasured Activity (%)" if col_idx == 0 else "", fontsize=9.5)
-            ax.grid(True, linestyle='--', alpha=0.45)
 
     plt.tight_layout()
-    fname_base = f"fig1_single_models_all_PE_systems{suffix}"
+    fname_base = f"fig1_4models_scatter_all_PE_systems{suffix}"
     master_png = os.path.join(out_dir, f"figures/{fname_base}.png")
     master_svg = os.path.join(out_dir, f"figures/{fname_base}.svg")
     plt.savefig(master_png, dpi=300)
     plt.savefig(master_svg)
     plt.close()
-    print(f"  Saved master Figure 1 to: {master_png}")
+    print(f"  Saved master 4-model scatter Figure 1 to: {master_png}")
 
     if not suffix:
-        # Generate individual 1x3 figures for each PE system
+        indiv_dir = os.path.join(out_dir, "figures/individual_scatters")
+        os.makedirs(indiv_dir, exist_ok=True)
+
+        # 2. Per-PE-system 1x4 figures AND 4 standalone individual scatter plots per PE system
         for pe_name, pe_col in pe_systems:
-            fig_ind, axes_ind = plt.subplots(1, 3, figsize=(15, 4.6))
-            for col_idx, (m_name, m_col, x_label, m_anno) in enumerate(single_models):
-                ax = axes_ind[col_idx]
-                x_vals = df[m_col]
-                y_vals = df[pe_col]
-
-                sp_r, sp_p = spearmanr(x_vals, y_vals)
-                pe_r, pe_p = pearsonr(x_vals, y_vals)
-                sns.regplot(
-                    x=x_vals,
-                    y=y_vals,
-                    ax=ax,
-                    color=MODEL_COLORS[m_name],
-                    scatter_kws={'alpha': 0.75, 's': 60, 'edgecolors': 'k', 'linewidths': 0.8},
-                    line_kws={'color': '#C53030' if m_name == 'DeepPrime6' else '#1A365D', 'linewidth': 1.8}
-                )
-
-                stats_text = (
-                    f"Spearman $R$ = {sp_r:.4f} ($P$ = {sp_p:.2e})\n"
-                    f"Pearson $r$ = {pe_r:.4f} ($P$ = {pe_p:.2e})\n"
-                    f"$n$ = {len(x_vals)}"
-                )
-                ax.text(
-                    0.04, 0.94,
-                    stats_text,
-                    transform=ax.transAxes,
-                    verticalalignment='top',
-                    fontsize=9.2,
-                    bbox=dict(boxstyle='round,pad=0.35', fc='#FFFFFF', ec='#CBD5E0', alpha=0.92)
-                )
-
-                ax.set_title(f"{m_name}\n({m_anno})", fontsize=11, fontweight='bold')
-                ax.set_xlabel(x_label, fontsize=10)
-                ax.set_ylabel(f"{pe_name} Measured Activity (%)", fontsize=10)
-                ax.grid(True, linestyle='--', alpha=0.45)
-
             safe_name = pe_name.replace(" ", "_").replace("-", "_")
-            ind_png = os.path.join(out_dir, f"figures/fig1_single_models_{safe_name}.png")
-            plt.tight_layout()
-            plt.savefig(ind_png, dpi=300)
-            plt.close()
+            fig_ind, axes_ind = plt.subplots(1, 4, figsize=(19.0, 4.7))
+            for col_idx, (m_name, m_col, x_label, m_anno, slug) in enumerate(four_models):
+                ax = axes_ind[col_idx]
+                is_ens = (m_col == 'rank_ens_all3')
+                _draw_scatter_panel(ax, df_plot[m_col], df_plot[pe_col], m_name, is_ensemble=is_ens, point_size=60, font_size=9.0)
+                ax.set_title(f"{m_name}\n({m_anno})", fontsize=10.8, fontweight='bold')
+                ax.set_xlabel(x_label, fontsize=9.8)
+                ax.set_ylabel(f"{pe_name} Measured Activity (%)", fontsize=9.8)
+
+                # Standalone 1x1 scatter plot for each of the 4 models
+                fig_single, ax_single = plt.subplots(1, 1, figsize=(5.2, 4.8))
+                _draw_scatter_panel(ax_single, df_plot[m_col], df_plot[pe_col], m_name, is_ensemble=is_ens, point_size=65, font_size=9.5)
+                ax_single.set_title(f"{m_name} — {pe_name}\n({m_anno})", fontsize=11, fontweight='bold', pad=8)
+                ax_single.set_xlabel(x_label, fontsize=10)
+                ax_single.set_ylabel(f"{pe_name} Measured Activity (%)", fontsize=10)
+                plt.tight_layout()
+                single_base = os.path.join(indiv_dir, f"scatter_{safe_name}_{slug}")
+                fig_single.savefig(f"{single_base}.png", dpi=300)
+                fig_single.savefig(f"{single_base}.svg")
+                plt.close(fig_single)
+
+            ind_base = os.path.join(out_dir, f"figures/fig1_4models_scatter_{safe_name}")
+            fig_ind.tight_layout()
+            fig_ind.savefig(f"{ind_base}.png", dpi=300)
+            fig_ind.savefig(f"{ind_base}.svg")
+            plt.close(fig_ind)
+
+        print(f"  Saved per-PE-system 1x4 scatters and 4 standalone scatter plots per PE system to: {indiv_dir}")
 
 
 def plot_fig2_model_prediction_correlations(df, out_dir):
@@ -542,15 +586,15 @@ def plot_fig2_model_prediction_correlations(df, out_dir):
     """
     print("\n[3/6] Generating Figure 2: Inter-model prediction score correlations...")
     pairs = [
-        ('DeepPrime-FT', 'PRIDICT2.0', 'pred_dp_base', 'pred_pridict2',
-         'DeepPrime-FT Prediction Score (%)', 'PRIDICT2.0 Prediction Score (%)',
-         MODEL_ANNOTATIONS['DeepPrime-FT'], MODEL_ANNOTATIONS['PRIDICT2.0']),
-        ('DeepPrime-FT', 'DeepPrime6', 'pred_dp_base', 'pred_dp6',
-         'DeepPrime-FT Prediction Score (%)', 'DeepPrime6 Prediction Score (%)',
-         MODEL_ANNOTATIONS['DeepPrime-FT'], MODEL_ANNOTATIONS['DeepPrime6']),
-        ('PRIDICT2.0', 'DeepPrime6', 'pred_pridict2', 'pred_dp6',
-         'PRIDICT2.0 Prediction Score (%)', 'DeepPrime6 Prediction Score (%)',
-         MODEL_ANNOTATIONS['PRIDICT2.0'], MODEL_ANNOTATIONS['DeepPrime6']),
+        ('DP', 'PRIDICT2.0', 'pred_dp_pe2', 'pred_pridict2',
+         'DP (PE2) Prediction Score (%)', 'PRIDICT2.0 Prediction Score (%)',
+         MODEL_ANNOTATIONS['DP'], MODEL_ANNOTATIONS['PRIDICT2.0']),
+        ('DP', 'DP6 (average)', 'pred_dp_pe2', 'pred_dp6',
+         'DP (PE2) Prediction Score (%)', 'DP6 (average) Prediction Score (%)',
+         MODEL_ANNOTATIONS['DP'], MODEL_ANNOTATIONS['DP6 (average)']),
+        ('PRIDICT2.0', 'DP6 (average)', 'pred_pridict2', 'pred_dp6',
+         'PRIDICT2.0 Prediction Score (%)', 'DP6 (average) Prediction Score (%)',
+         MODEL_ANNOTATIONS['PRIDICT2.0'], MODEL_ANNOTATIONS['DP6 (average)']),
     ]
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
@@ -584,8 +628,8 @@ def plot_fig2_model_prediction_correlations(df, out_dir):
         )
 
         stats_text = (
-            f"Spearman $R$ = {sp_r:.4f} ($P$ = {sp_p:.3f})\n"
-            f"Pearson $r$ = {pe_r:.4f} ($P$ = {pe_p:.3f})\n"
+            f"Spearman $R$ = {sp_r:.4f} ($P$ = {sp_p:.2e})\n"
+            f"Pearson $r$ = {pe_r:.4f} ($P$ = {pe_p:.2e})\n"
             f"$n$ = {len(x_vals)}"
         )
         ax.text(
@@ -634,7 +678,7 @@ def plot_fig3_ensemble_models(df, out_dir, suffix="", title_prefix=""):
         ('DP + PRIDICT2.0', 'rank_ens_dp_pri', MODEL_COLORS['DP + PRIDICT2.0']),
         ('DP + DP6', 'rank_ens_dp_dp6', MODEL_COLORS['DP + DP6']),
         ('PRIDICT2.0 + DP6', 'rank_ens_pri_dp6', MODEL_COLORS['PRIDICT2.0 + DP6']),
-        ('DP + DP6 + PRIDICT2.0', 'rank_ens_all3', MODEL_COLORS['DP + DP6 + PRIDICT2.0']),
+        ('DP + PRIDICT2.0 + DP6', 'rank_ens_all3', MODEL_COLORS['DP + PRIDICT2.0 + DP6']),
     ]
 
     # Combined master figure (5 rows x 4 columns)
@@ -739,29 +783,22 @@ def plot_fig3_ensemble_models(df, out_dir, suffix="", title_prefix=""):
                 ax.grid(True, linestyle='--', alpha=0.45)
 
             safe_name = pe_name.replace(" ", "_").replace("-", "_")
-            ind_png = os.path.join(out_dir, f"figures/fig3_ensemble_models_{safe_name}.png")
+            ind_base = os.path.join(out_dir, f"figures/fig3_ensemble_models_{safe_name}")
             plt.tight_layout()
-            plt.savefig(ind_png, dpi=300)
+            plt.savefig(f"{ind_base}.png", dpi=300)
+            plt.savefig(f"{ind_base}.svg")
             plt.close()
 
 
 def plot_fig4_summary_comparison(metrics_df, out_dir):
     """
     Summary comparison showing both Spearman R and Pearson r across single models and ensembles.
+    Y-axis order (top to bottom):
+      DP, PRIDICT2.0, DP6 (average), DP + PRIDICT2.0, DP + DP6, PRIDICT2.0 + DP6, DP + PRIDICT2.0 + DP6
     """
-    print("\n[5/5] Generating Figure 4: Performance Comparison (Spearman & Pearson)...")
+    print("\n[5/6] Generating Figure 4: Performance Comparison (Spearman & Pearson)...")
 
-    model_order = [
-        'DeepPrime-FT',
-        'PRIDICT2.0',
-        'DeepPrime6',
-        'DeepPrime6 (Variant-Matched)',
-        'DP + PRIDICT2.0',
-        'DP + DP6',
-        'PRIDICT2.0 + DP6',
-        'DP + DP6 + PRIDICT2.0'
-    ]
-    present_models = [m for m in model_order if m in metrics_df['Model'].unique()]
+    present_models = [m for m in HEATMAP_MODEL_ORDER if m in metrics_df['Model'].unique()]
 
     # 1. Grouped Bar Chart (2 panels: Spearman & Pearson)
     fig, axes = plt.subplots(2, 1, figsize=(13.5, 11), sharex=True)
@@ -829,6 +866,8 @@ def plot_fig4_summary_comparison(metrics_df, out_dir):
             linecolor='gray',
             ax=ax
         )
+        # Subtle horizontal separator between the 3 single models and 4 ensembles
+        ax.axhline(3.0, color='#1A202C', linewidth=1.8)
         vals = pivot_df.values
         mid = (vmin + vmax) / 2.0
         for i in range(vals.shape[0]):
@@ -842,13 +881,13 @@ def plot_fig4_summary_comparison(metrics_df, out_dir):
                         color=txt_color, fontsize=9.5, fontweight='bold'
                     )
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6.8), sharey=True)
-    _draw_heatmap_with_text(axes[0], pivot_sp, 'YlGnBu', 0.40, 0.82, "Spearman's $\\rho$")
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6.4), sharey=True)
+    _draw_heatmap_with_text(axes[0], pivot_sp, 'YlGnBu', 0.45, 0.85, "Spearman's $\\rho$")
     axes[0].set_title("A. Spearman Rank Correlation ($\\rho$, N=32)", fontsize=12, fontweight='bold', pad=10)
     axes[0].set_ylabel("Prediction Model / Ensemble", fontsize=11)
     axes[0].set_xlabel("Prime Editing System Evaluated", fontsize=11)
 
-    _draw_heatmap_with_text(axes[1], pivot_pe, 'OrRd', 0.40, 0.70, "Pearson's $r$")
+    _draw_heatmap_with_text(axes[1], pivot_pe, 'OrRd', 0.35, 0.72, "Pearson's $r$")
     axes[1].set_title("B. Pearson Linear Correlation ($r$, N=32)", fontsize=12, fontweight='bold', pad=10)
     axes[1].set_ylabel("")
     axes[1].set_xlabel("Prime Editing System Evaluated", fontsize=11)
@@ -861,29 +900,39 @@ def plot_fig4_summary_comparison(metrics_df, out_dir):
     plt.close()
     print(f"  Saved Figure 4 (Dual Heatmap) to: {hm_png}")
 
+    return pivot_sp, pivot_pe
 
-def export_clean_tables(df, metrics_df, out_dir):
+
+def export_clean_tables(df, metrics_df, pivot_sp, pivot_pe, out_dir):
     """
-    Saves clean data tables and summaries.
+    Saves clean data tables, heatmap matrices, and summaries.
     """
+    print("\n[6/6] Exporting scored dataset, metrics, and heatmap matrices...")
     os.makedirs(os.path.join(out_dir, "results"), exist_ok=True)
 
     # 1. Full data with ranks and ensembles
     df_out = df.copy()
     data_csv = os.path.join(out_dir, "results/endogenous_n32_full_scored_data.csv")
     df_out.to_csv(data_csv, index=False)
-    print(f"\nSaved full enriched dataset to: {data_csv}")
+    print(f"  Saved full enriched dataset to: {data_csv}")
 
     # 2. Primary Metrics summary (Full N=32)
     metrics_csv = os.path.join(out_dir, "results/endogenous_n32_evaluation_metrics_summary.csv")
     metrics_df.to_csv(metrics_csv, index=False)
     print(f"  Saved primary metrics summary (N=32) to: {metrics_csv}")
 
-    # 3. Inter-model correlations
+    # 3. Exact heatmap matrices (7 rows x 5 PE systems)
+    hm_sp_csv = os.path.join(out_dir, "results/heatmap_spearman_matrix.csv")
+    hm_pe_csv = os.path.join(out_dir, "results/heatmap_pearson_matrix.csv")
+    pivot_sp.to_csv(hm_sp_csv)
+    pivot_pe.to_csv(hm_pe_csv)
+    print(f"  Saved heatmap matrices to: {hm_sp_csv} & {hm_pe_csv}")
+
+    # 4. Inter-model correlations
     pairs = [
-        ('DeepPrime-FT vs PRIDICT2.0', 'pred_dp_base', 'pred_pridict2'),
-        ('DeepPrime-FT vs DeepPrime6', 'pred_dp_base', 'pred_dp6'),
-        ('PRIDICT2.0 vs DeepPrime6', 'pred_pridict2', 'pred_dp6'),
+        ('DP vs PRIDICT2.0', 'pred_dp_pe2', 'pred_pridict2'),
+        ('DP vs DP6 (average)', 'pred_dp_pe2', 'pred_dp6'),
+        ('PRIDICT2.0 vs DP6 (average)', 'pred_pridict2', 'pred_dp6'),
     ]
     inter_records = []
     for pair_name, c1, c2 in pairs:
@@ -931,13 +980,13 @@ def main():
     metrics_df = calculate_metrics_summary(df_calc, cohort_name="Full Cohort (N=32)")
 
     # 5. Generate Figures (Full Cohort N=32)
-    plot_fig1_single_models(df_calc, args.output_dir)
+    plot_fig1_four_model_scatters(df_calc, args.output_dir)
     plot_fig2_model_prediction_correlations(df_calc, args.output_dir)
     plot_fig3_ensemble_models(df_calc, args.output_dir)
-    plot_fig4_summary_comparison(metrics_df, args.output_dir)
+    pivot_sp, pivot_pe = plot_fig4_summary_comparison(metrics_df, args.output_dir)
 
     # 6. Export Results
-    export_clean_tables(df_calc, metrics_df, args.output_dir)
+    export_clean_tables(df_calc, metrics_df, pivot_sp, pivot_pe, args.output_dir)
 
     print("\n" + "=" * 80)
     print("=== All Benchmarks & Figures Completed Successfully! ===")
