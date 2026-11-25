@@ -3,7 +3,7 @@
 Master Evaluation & Figure Generation Pipeline
 
 Executes the complete post-training evaluation across all 4 key benchmarks:
-1. Figure 3: Main library strictly unseen test set performance (PEmaxdRNaseH, PE6a, PE6b, PE6c vs DeepPrime-FT)
+1. Figure 3: Main library strictly unseen test set performance (PEmaxdRNaseH, PE6a, PE6b, PE6c vs DeepPrime (PE2))
 2. Small Library: PE6 to PE7 orthogonal generalization benchmark (pe6to7_with_avgs)
 3. FRT Library: 112 pegRNA design predictions & multi-model distribution analysis
 4. Orthogonal Benchmarks: DeepPrime (Table S2-1) & PRIDICT2.0 (23k fold 0) strictly unseen benchmarks

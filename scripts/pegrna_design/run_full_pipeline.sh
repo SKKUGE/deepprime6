@@ -43,7 +43,7 @@ $ENV_PYTHON src/pegrna_pipeline/05_validate_pegrna_designs.py \
     --input $OUTDIR/pegrna_designs_raw.parquet \
     --output-dir $OUTDIR
 
-echo "Phase 6: Score DeepPrime-FT"
+echo "Phase 6: Score DeepPrime (PE2)"
 $ENV_PYTHON src/pegrna_pipeline/06_score_deepprime.py \
     --input $OUTDIR/pegrna_designs_qc_pass.parquet \
     --config config/pipeline_config.yaml \

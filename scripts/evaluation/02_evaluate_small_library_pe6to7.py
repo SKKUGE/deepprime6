@@ -16,7 +16,7 @@ Produces:
 - Summary metrics CSV: results/small_library_pe6to7_summary.csv
 - Replicate metrics CSV: results/small_library_pe6to7_replicates.csv
 - 6-panel orthogonal correlation plot (PNG & SVG)
-- Bar plots comparing DeepPrime-FT, PRIDICT2.0, and DeepPrime6 (Pearson & Spearman) (PNG & SVG)
+- Bar plots comparing DeepPrime (PE2), PRIDICT2.0, and DeepPrime6 (Pearson & Spearman) (PNG & SVG)
 """
 
 import os
