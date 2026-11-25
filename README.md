@@ -249,5 +249,4 @@ Copy `.env.example` to `.env` and fill in your credentials:
 
 ## Citation
 
-Ju-young Shin. (2026). SKKUGE/deepprime6: v1.4 (Version v1.4) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23277690
-
+To be determined.
